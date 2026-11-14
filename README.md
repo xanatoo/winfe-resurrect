@@ -18,7 +18,15 @@ Fonts intentionally use **MS Sans Serif** to evoke the Windows 3.1 / early Windo
 
 ## Building
 
-### Windows (recommended)
+### Nix (recommended on Linux / NixOS)
+
+```bash
+nix build          # → result/bin/winfe_resurrect.exe  (Windows PE)
+nix run            # build + launch under Wine
+nix develop        # shell with MinGW cross-compiler + Wine
+```
+
+### Windows
 
 ```bat
 g++ -std=c++17 -O2 -mwindows winfe_resurrect.cpp -o winfe_resurrect.exe -lcomctl32 -lgdi32 -luser32
@@ -30,16 +38,12 @@ or with MSVC:
 cl /EHsc /O2 /Fe:winfe_resurrect.exe winfe_resurrect.cpp user32.lib gdi32.lib comctl32.lib
 ```
 
-### Linux / Wine
-
-Cross-compile with MinGW:
+### Manual MinGW cross-compile
 
 ```bash
-x86_64-w64-mingw32-g++ -std=c++17 -O2 -mwindows winfe_resurrect.cpp -o winfe_resurrect.exe -lcomctl32 -lgdi32 -luser32
+make               # uses x86_64-w64-mingw32-g++ by default
 wine winfe_resurrect.exe
 ```
-
-(Or install the binary on a Windows machine / VM.)
 
 ## Source of truth
 
@@ -53,13 +57,13 @@ The original application used Borland ObjectWindows Library (OWL) + a custom `PV
 
 - No FeBe / backend connection
 - No real document model, versioning or transclusion
-- Akord form is a visual approximation (the 1993 version contained ~50 controls)
 - MDI is emulated with ordinary overlapped windows rather than a true MDI client
 - Some advanced OWL behaviours (exact focus handling, BWCC controls, etc.) are not reproduced
+- Akord form is a faithful reconstruction from `akord.pvt` but not pixel-perfect to the original dialog units
 
 ## Extending the resurrection
 
-The dialog layouts in `fe.rc` are the authoritative source. Additional forms (Attn, CProf, Tabs, full Akord) and the exact `ID_DOCINFO` / `ID_LINKINFO` control arrangements can be expanded by continuing the same CreateWindow pattern used for Memo and Rate.
+The dialog layouts in `fe.rc` and the `.pvt` resources under `pcaide/` are the authoritative source. Additional forms (Attn, CProf, Tabs) can be expanded by the same CreateWindow pattern.
 
 ---
 
