@@ -368,6 +368,7 @@ struct Backend {
 };
 
 static Backend g_be;
+static std::map<HWND, int> g_docHwnd; // MDI doc windows -> stub doc id
 
 void RefreshStatus() {
     SetStatus(g_be.statusLine().c_str());
@@ -1240,9 +1241,10 @@ void BuildLinkBrowser(HWND hwnd) {
 void BuildDocForm(HWND hwnd) {
     g_be.seed();
     StubDoc* d = g_be.getActive();
+    if (d) g_docHwnd[hwnd] = d->id;
     CreateWindowA("STATIC", d ? d->title.c_str() : "Document",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        8, 6, 480, 16, hwnd, nullptr, g_hInst, nullptr);
+        8, 6, 480, 16, hwnd, (HMENU)(intptr_t)9002, g_hInst, nullptr);
     std::string meta;
     if (d) {
         meta = "Owner: " + d->owner + "   Variant: " + std::to_string(d->variant);
@@ -1251,14 +1253,27 @@ void BuildDocForm(HWND hwnd) {
     }
     CreateWindowA("STATIC", meta.c_str(),
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        8, 24, 480, 16, hwnd, nullptr, g_hInst, nullptr);
+        8, 24, 480, 16, hwnd, (HMENU)(intptr_t)9003, g_hInst, nullptr);
     CreateWindowA("EDIT", d ? d->content.c_str() : "",
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_TABSTOP,
         8, 48, 490, 300, hwnd, (HMENU)(intptr_t)9001, g_hInst, nullptr);
-    // Store doc id in GWLP_USERDATA high half? type is already there.
-    // Keep content edits local; Save reads back.
     ApplyClassicFontToChildren(hwnd);
+}
+
+static int DocIdForHwnd(HWND hwnd) {
+    auto it = g_docHwnd.find(hwnd);
+    return it == g_docHwnd.end() ? 0 : it->second;
+}
+
+static void SyncDocFromWindow(HWND hwnd) {
+    int id = DocIdForHwnd(hwnd);
+    StubDoc* d = id ? g_be.get(id) : nullptr;
+    if (!d) return;
+    char buf[8192];
+    GetDlgItemTextA(hwnd, 9001, buf, sizeof(buf));
+    d->content = buf;
+    d->dirty = true;
 }
 
 
@@ -1370,21 +1385,28 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             ShowLinkInfoDialog(hwnd);
         }
         if (type == 8 && id == 9001 && HIWORD(wParam) == EN_CHANGE) {
-            if (StubDoc* d = g_be.getActive()) {
+            int did = DocIdForHwnd(hwnd);
+            if (StubDoc* d = did ? g_be.get(did) : nullptr) {
                 d->dirty = true;
+                g_be.activeDoc = did;
                 RefreshStatus();
             }
         }
         return 0;
     }
+    case WM_MDIACTIVATE:
+        if ((HWND)lParam == hwnd && type == 8) {
+            int did = DocIdForHwnd(hwnd);
+            if (did) {
+                g_be.activeDoc = did;
+                RefreshStatus();
+            }
+        }
+        break;
     case WM_CLOSE:
         if (type == 8) {
-            char buf[8192];
-            GetDlgItemTextA(hwnd, 9001, buf, sizeof(buf));
-            if (StubDoc* d = g_be.getActive()) {
-                d->content = buf;
-                d->dirty = true;
-            }
+            SyncDocFromWindow(hwnd);
+            g_docHwnd.erase(hwnd);
             RefreshStatus();
         }
         if (g_hClient)
@@ -1612,10 +1634,50 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             break;
         case 251: {
             g_be.seed();
-            int idNew = g_be.createDoc("Untitled Document");
-            StubDoc* d = g_be.get(idNew);
-            CreateFormWindow(d->title.c_str(), 8);
-            RefreshStatus();
+            // Tiny title prompt
+            HWND hDlg = BeginModalDialog(hwnd, "New document", 360, 120);
+            CreateWindowA("STATIC", "Title:", WS_CHILD | WS_VISIBLE,
+                16, 20, 50, 16, hDlg, nullptr, g_hInst, nullptr);
+            CreateWindowA("EDIT", "Untitled Document",
+                WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
+                70, 18, 260, 22, hDlg, (HMENU)(intptr_t)9500, g_hInst, nullptr);
+            CreateWindowA("BUTTON", "OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+                160, 60, 80, 28, hDlg, (HMENU)IDOK, g_hInst, nullptr);
+            CreateWindowA("BUTTON", "Cancel", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+                250, 60, 80, 28, hDlg, (HMENU)IDCANCEL, g_hInst, nullptr);
+            ApplyClassicFontToChildren(hDlg);
+            EnableWindow(hwnd, FALSE);
+            ShowWindow(hDlg, SW_SHOW);
+            MSG msg;
+            char title[256] = "Untitled Document";
+            int code = IDCANCEL;
+            while (IsWindow(hDlg) && GetMessageA(&msg, nullptr, 0, 0)) {
+                if (msg.message == WM_COMMAND) {
+                    int cid = LOWORD(msg.wParam);
+                    if (cid == IDOK) {
+                        GetDlgItemTextA(hDlg, 9500, title, sizeof(title));
+                        code = IDOK;
+                        DestroyWindow(hDlg);
+                        break;
+                    }
+                    if (cid == IDCANCEL) {
+                        DestroyWindow(hDlg);
+                        break;
+                    }
+                }
+                if (!IsDialogMessageA(hDlg, &msg)) {
+                    TranslateMessage(&msg);
+                    DispatchMessageA(&msg);
+                }
+            }
+            EnableWindow(hwnd, TRUE);
+            SetActiveWindow(hwnd);
+            if (code == IDOK) {
+                int idNew = g_be.createDoc(title[0] ? title : "Untitled Document");
+                StubDoc* d = g_be.get(idNew);
+                CreateFormWindow(d->title.c_str(), 8);
+                RefreshStatus();
+            }
             break;
         }
         case 252:
@@ -1709,24 +1771,19 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         }
         case CM_SAVE: {
             g_be.seed();
-            // Pull content from active MDI child if it is a document form
-            if (g_hClient) {
-                HWND active = (HWND)SendMessageA(g_hClient, WM_MDIGETACTIVE, 0, 0);
-                if (active) {
-                    HWND edit = GetDlgItem(active, 9001);
-                    if (edit) {
-                        char buf[8192];
-                        GetWindowTextA(edit, buf, sizeof(buf));
-                        if (StubDoc* d = g_be.getActive()) {
-                            d->content = buf;
-                        }
-                    }
+            for (auto& kv : g_docHwnd) {
+                if (IsWindow(kv.first)) SyncDocFromWindow(kv.first);
+            }
+            int n = 0;
+            for (auto& kv : g_be.docs) {
+                if (kv.second.dirty) {
+                    g_be.save(kv.second.id);
+                    ++n;
                 }
             }
-            if (g_be.save(g_be.activeDoc))
-                ClassicMessage(hwnd, "Save All", "Active document saved (in-memory).");
-            else
-                ClassicMessage(hwnd, "Save All", "Nothing to save.");
+            char buf[128];
+            sprintf(buf, "Saved %d document(s) in mid-end memory.", n);
+            ClassicMessage(hwnd, "Save All", buf);
             RefreshStatus();
             break;
         }
