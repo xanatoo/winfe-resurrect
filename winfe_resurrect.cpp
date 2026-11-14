@@ -821,6 +821,20 @@ HWND CreateFormWindow(const char* title, int type) {
     if (hwnd) {
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
+        static const char* kind[] = {
+            "Desktop", "Memorandum", "Rating Instructions", "Akord",
+            "Underwriters Manual", "Attention", "Reference Area",
+            "Contractual Profile", "Document", "Doc Browser", "Link Browser"
+        };
+        if (type >= 0 && type < 11) {
+            char buf[192];
+            sprintf(buf, " Opened: %s", kind[type]);
+            // append to status mid-end line
+            std::string s = g_be.statusLine();
+            s += "  |";
+            s += buf;
+            SetStatus(s.c_str());
+        }
     }
     return hwnd;
 }
@@ -1406,6 +1420,12 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     }
     case WM_COMMAND: {
         int id = LOWORD(wParam);
+        // Historical Set Aside / Done buttons
+        if (id == IDOK || id == IDCANCEL) {
+            if (type == 8) SyncDocFromWindow(hwnd);
+            PostMessageA(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        }
         if (type == 0) {
             if (id == FI_HOME_AKORD) CreateFormWindow("AKORD General Liability Section", 3);
             if (id == FI_HOME_RATE)  CreateFormWindow("Rating Instructions", 2);
@@ -1791,7 +1811,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 "Udanax Gold Windows frontend — visual resurrection\n"
                 "Original: 1993 Xanadu / Udanax Gold winfe + pcaide\n"
                 "Forms from fe.rc and pcaide/*.pvt\n\n"
-                "In-memory stub mid-end only.\n"
+                "MDI frame + in-memory stub mid-end\n"
+                "(docs, links, grab/release, find, snapshot)\n\n"
                 "Historical effort — not a live FeBe client.");
             break;
         case CM_INITIALIZE:
