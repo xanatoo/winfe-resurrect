@@ -11,17 +11,15 @@
       packages = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
-          # Cross toolchain targeting Windows x86_64
           pkgsWin = pkgs.pkgsCross.mingwW64;
         in rec {
-          # The Windows executable (cross-compiled)
           winfe-resurrect = pkgsWin.stdenv.mkDerivation {
             pname = "winfe-resurrect";
-            version = "0.3.0";
-            src = ./.;
+            version = "0.7.0";
 
-            # Only the C++ source is needed; headers/RC are reference material
-            sourceRoot = ".";
+            # Flake source; do NOT set sourceRoot = "." — that points at
+            # $NIX_BUILD_TOP instead of the unpacked source directory.
+            src = ./.;
 
             nativeBuildInputs = [ pkgsWin.stdenv.cc ];
 
@@ -29,6 +27,8 @@
 
             buildPhase = ''
               runHook preBuild
+              echo "Source tree:"
+              ls -la
               $CXX -std=c++17 -O2 -Wall -mwindows \
                 winfe_resurrect.cpp \
                 -o winfe_resurrect.exe \
@@ -40,9 +40,8 @@
               runHook preInstall
               mkdir -p $out/bin
               install -Dm755 winfe_resurrect.exe $out/bin/winfe_resurrect.exe
-              # Also ship the historical reference files
               mkdir -p $out/share/winfe-resurrect
-              cp README.md fe.rc fe.h $out/share/winfe-resurrect/ 2>/dev/null || true
+              cp -f README.md fe.rc fe.h $out/share/winfe-resurrect/ 2>/dev/null || true
               runHook postInstall
             '';
 
@@ -50,12 +49,10 @@
               description = "1993 Udanax Gold winfe visual resurrection (Windows executable)";
               license = licenses.mit;
               platforms = platforms.all;
-              # The output is a Windows PE binary
               hydraPlatforms = [];
             };
           };
 
-          # Convenience: run the .exe under Wine
           winfe-resurrect-wine = pkgs.writeShellApplication {
             name = "winfe-resurrect";
             runtimeInputs = [ pkgs.wineWowPackages.stable ];
