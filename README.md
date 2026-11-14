@@ -4,6 +4,8 @@ Visual resurrection of the **1993 Udanax Gold Windows frontend** (`winfe` / `pca
 
 Historical UI effort — not a live FeBe / Xanadu protocol client.
 
+![Desktop and AKORD General Liability Section under Wine](screenshot.png)
+
 ## Features
 
 ### UI (from original sources)
