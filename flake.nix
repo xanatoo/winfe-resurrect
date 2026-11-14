@@ -15,7 +15,7 @@
         in rec {
           winfe-resurrect = pkgsWin.stdenv.mkDerivation {
             pname = "winfe-resurrect";
-            version = "0.7.1";
+            version = "0.7.2";
             src = self;
 
             nativeBuildInputs = [ pkgsWin.stdenv.cc ];
@@ -48,9 +48,19 @@
 
           winfe-resurrect-wine = pkgs.writeShellApplication {
             name = "winfe-resurrect";
-            runtimeInputs = [ pkgs.wineWowPackages.stable ];
+            runtimeInputs = [ pkgs.wineWowPackages.stable pkgs.coreutils ];
             text = ''
-              exec wine ${winfe-resurrect}/bin/winfe_resurrect.exe "$@"
+              set -euo pipefail
+              export WINEPREFIX="''${WINEPREFIX:-$(mktemp -d -t winfe-wine-XXXXXX)}"
+              export WINEARCH=win64
+              export WINEDLLOVERRIDES="mscoree,mshtml="
+              # Initialize prefix quietly (first run only)
+              if [[ ! -f "$WINEPREFIX/system.reg" ]]; then
+                wineboot --init 2>/dev/null || true
+                # Give wineserver a moment to finish
+                wineserver -w 2>/dev/null || true
+              fi
+              exec wine64 ${winfe-resurrect}/bin/winfe_resurrect.exe "$@"
             '';
           };
 
