@@ -6,18 +6,12 @@ This is **not** a working hypertext client. It is a faithful visual and structur
 
 ## What is restored
 
-**Step 2** (current):
+**Step 3** (current):
 
-- Main frame window with the original menu structure:
-  - **Document**: Grab, Release, New variant, Info, Links submenu (Links / Start Link / End Link / Attachment), Delete, Save All, Return Home, Initialize, Test Clubs, Exit
-  - **Edit**: Undo, Cut, Copy, Paste, Delete, Insert file, Copy to file, Find, Replace, Next
-  - **Window**: Cascade, Tile, Arrange Icons, Close All
-- Proper modal **Login** dialog (historical “socket vlad 65002” / “System Admin”)
-- Modal **Document Info** and **Link Info** dialogs with owner / permissions / history combos
-- Desktop / Home form (`FDLG_HOME`) with buttons that open the other forms
-- Memo form (`FDLG_MEMO`) — To / From / Re / Message + Reference (opens Link Info)
-- Rate form (“ACME Rate Request”) — Name / Underwriter / Instructions + checkbox
-- Akord form matching the simple `FDLG_AKORD` from `fe.rc`
+- Main frame + original Document / Edit / Window menus
+- Modal Login, Document Info, and Link Info dialogs
+- Desktop / Home, Memo, Rate forms
+- **Full Akord “General Liability Section” form** reconstructed from the original `pcaide/akord.pvt` resource (coverages, options, limits, producer/applicant, historical sample data and pre-checked boxes)
 - Classic MS Sans Serif styling throughout
 
 Fonts intentionally use **MS Sans Serif** to evoke the Windows 3.1 / early Windows 95 era.
