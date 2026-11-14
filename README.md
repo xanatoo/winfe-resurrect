@@ -18,13 +18,15 @@ Historical UI effort — not a live FeBe / Xanadu protocol client.
 
 ### Stub mid-end
 - Seed documents (Desktop, Memo, CGL package) and a sample link
-- **Grab / Release / New variant / New document / Delete**
-- **Start Link / End Link** between documents
+- **Grab / Release / New variant / Variants… / New document / Delete**
+- **Start Link / End Link** on text selections (span + descriptor)
+- **Attachment** of the current selection
+- Per-document **Links** pane (list + Follow to other end/span)
 - Document Browser and Link Browser
 - Multi-window document editors (each bound to a doc id)
 - **Save All** syncs all open editors into memory
 - **Export / Import** `winfe-midend.stub` snapshot files
-- Find / Find Next in active document content
+- Find / Find Next / **Replace All**
 - Clubs list dialog; Document Info edits title and permissions
 
 ## Build
