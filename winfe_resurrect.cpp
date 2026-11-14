@@ -169,6 +169,7 @@ void SetStatus(const char* text) {
 // ---------------------------------------------------------------------------
 struct StubDoc {
     int id = 0;
+    int parentId = 0;   // variant lineage (0 = root)
     std::string title;
     std::string owner = "System Admin";
     std::string content;
@@ -186,12 +187,15 @@ struct StubLink {
     int id = 0;
     std::string title;
     std::string owner = "System Admin";
+    std::string descriptor; // snippet from other end / selection
     int fromDoc = 0;
     int toDoc   = 0;
+    int fromStart = 0, fromEnd = 0; // selection offsets in fromDoc
+    int toStart = 0, toEnd = 0;
     int readPerm = 0;
     int editPerm = 0;
     std::string lastRevBy = "Ravi Pandya";
-    bool pendingStart = false;
+    bool isAttachment = false;
 };
 
 struct Backend {
@@ -201,8 +205,11 @@ struct Backend {
     int nextDocId  = 1;
     int nextLinkId = 1;
     int activeDoc  = 0;
-    int pendingLinkFrom = 0; // for Start Link / End Link
+    int pendingLinkFrom = 0;
+    int pendingFromStart = 0, pendingFromEnd = 0;
+    std::string pendingFromSnippet;
     std::string lastFind;
+    std::string lastReplace;
     size_t lastFindPos = 0;
     std::map<int, StubDoc> docs;
     std::vector<StubLink> links;
@@ -246,8 +253,14 @@ struct Backend {
         StubLink l;
         l.id = nextLinkId++;
         l.title = "Memo → CGL package";
+        l.descriptor = "Transclusion tests pass on the current Ent.";
         l.fromDoc = memo.id;
         l.toDoc = cgl.id;
+        l.fromStart = (int)memo.content.find("Transclusion");
+        if (l.fromStart < 0) l.fromStart = 0;
+        l.fromEnd = l.fromStart + 20;
+        l.toStart = 0;
+        l.toEnd = 20;
         l.readPerm = 1;
         links.push_back(l);
 
@@ -310,6 +323,7 @@ struct Backend {
         if (!d) return false;
         StubDoc v = *d;
         v.id = nextDocId++;
+        v.parentId = d->parentId ? d->parentId : d->id;
         v.variant = d->variant + 1;
         v.title = d->title + " (v" + std::to_string(v.variant) + ")";
         v.grabbed = true;
@@ -320,33 +334,89 @@ struct Backend {
         return true;
     }
 
+    std::vector<int> variantsOf(int id) {
+        std::vector<int> out;
+        StubDoc* d = get(id);
+        if (!d) return out;
+        int root = d->parentId ? d->parentId : d->id;
+        for (auto& kv : docs) {
+            int r = kv.second.parentId ? kv.second.parentId : kv.second.id;
+            if (r == root || kv.second.id == root) out.push_back(kv.second.id);
+        }
+        return out;
+    }
+
     bool remove(int id) {
         if (docs.erase(id) == 0) return false;
         if (activeDoc == id) activeDoc = docs.empty() ? 0 : docs.begin()->first;
         return true;
     }
 
-    int startLink() {
+    int startLink(int selStart, int selEnd, const std::string& snippet) {
         if (!activeDoc) return 0;
         pendingLinkFrom = activeDoc;
+        pendingFromStart = selStart;
+        pendingFromEnd = selEnd;
+        pendingFromSnippet = snippet;
         return pendingLinkFrom;
     }
 
-    int endLink() {
-        if (!pendingLinkFrom || !activeDoc || pendingLinkFrom == activeDoc)
+    int endLink(int selStart, int selEnd, const std::string& snippet) {
+        if (!pendingLinkFrom || !activeDoc)
             return 0;
+        // Allow same-doc links (different spans) like the original selection model
         StubLink l;
         l.id = nextLinkId++;
         StubDoc* a = get(pendingLinkFrom);
         StubDoc* b = get(activeDoc);
         l.title = (a ? a->title : "?") + " → " + (b ? b->title : "?");
+        if (!snippet.empty())
+            l.descriptor = snippet;
+        else if (!pendingFromSnippet.empty())
+            l.descriptor = pendingFromSnippet;
+        else
+            l.descriptor = l.title;
         l.fromDoc = pendingLinkFrom;
         l.toDoc = activeDoc;
+        l.fromStart = pendingFromStart;
+        l.fromEnd = pendingFromEnd;
+        l.toStart = selStart;
+        l.toEnd = selEnd;
         l.owner = user;
         links.push_back(l);
         int id = l.id;
         pendingLinkFrom = 0;
+        pendingFromStart = pendingFromEnd = 0;
+        pendingFromSnippet.clear();
         return id;
+    }
+
+    int attachSelection(int selStart, int selEnd, const std::string& snippet) {
+        if (!activeDoc) return 0;
+        StubLink l;
+        l.id = nextLinkId++;
+        StubDoc* d = get(activeDoc);
+        l.title = std::string("Attachment on ") + (d ? d->title : "?");
+        l.descriptor = snippet.empty() ? "(attachment)" : snippet;
+        l.fromDoc = activeDoc;
+        l.toDoc = activeDoc;
+        l.fromStart = selStart;
+        l.fromEnd = selEnd;
+        l.toStart = selStart;
+        l.toEnd = selEnd;
+        l.isAttachment = true;
+        l.owner = user;
+        links.push_back(l);
+        return l.id;
+    }
+
+    std::vector<int> linksForDoc(int docId) {
+        std::vector<int> out;
+        for (size_t i = 0; i < links.size(); ++i) {
+            if (links[i].fromDoc == docId || links[i].toDoc == docId)
+                out.push_back((int)i);
+        }
+        return out;
     }
 
     std::string statusLine() const {
@@ -802,7 +872,7 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 5) { w = 420; h = 160; }      // Attention
     if (type == 6) { w = 400; h = 140; }      // Reference Area (Tabs)
     if (type == 7) { w = 560; h = 580; }      // Contractual Profile
-    if (type == 8) { w = 520; h = 400; }      // Document content (stub)
+    if (type == 8) { w = 620; h = 420; }      // Document + link pane
     if (type == 9) { w = 420; h = 320; }      // Document browser
     if (type == 10) { w = 420; h = 320; }     // Link browser
 
@@ -1338,27 +1408,44 @@ void BuildLinkBrowser(HWND hwnd) {
     ApplyClassicFontToChildren(hwnd);
 }
 
+static void RefreshDocLinkPane(HWND docHwnd);
+static int DocIdForHwnd(HWND hwnd);
 void BuildDocForm(HWND hwnd) {
     g_be.seed();
     StubDoc* d = g_be.getActive();
     if (d) g_docHwnd[hwnd] = d->id;
     CreateWindowA("STATIC", d ? d->title.c_str() : "Document",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        8, 6, 480, 16, hwnd, (HMENU)(intptr_t)9002, g_hInst, nullptr);
+        8, 6, 360, 16, hwnd, (HMENU)(intptr_t)9002, g_hInst, nullptr);
     std::string meta;
     if (d) {
-        meta = "Owner: " + d->owner + "   Variant: " + std::to_string(d->variant);
-        if (d->grabbed) meta += "   [GRABBED]";
+        meta = "Owner: " + d->owner + "  v" + std::to_string(d->variant);
+        if (d->grabbed) meta += " [GRABBED]";
         if (d->dirty) meta += " *";
     }
     CreateWindowA("STATIC", meta.c_str(),
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        8, 24, 480, 16, hwnd, (HMENU)(intptr_t)9003, g_hInst, nullptr);
+        8, 24, 360, 16, hwnd, (HMENU)(intptr_t)9003, g_hInst, nullptr);
+    // Main text editor (left)
     CreateWindowA("EDIT", d ? d->content.c_str() : "",
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_TABSTOP,
-        8, 48, 490, 300, hwnd, (HMENU)(intptr_t)9001, g_hInst, nullptr);
+        8, 48, 360, 300, hwnd, (HMENU)(intptr_t)9001, g_hInst, nullptr);
+    // Per-document link pane (right) — original FE used FEListWindow
+    CreateWindowA("STATIC", "Links",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        380, 24, 120, 16, hwnd, nullptr, g_hInst, nullptr);
+    CreateWindowA("LISTBOX", "",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY | WS_TABSTOP,
+        380, 48, 200, 260, hwnd, (HMENU)(intptr_t)9010, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Follow",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        380, 318, 60, 24, hwnd, (HMENU)(intptr_t)9011, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Refresh",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        450, 318, 70, 24, hwnd, (HMENU)(intptr_t)9012, g_hInst, nullptr);
     ApplyClassicFontToChildren(hwnd);
+    RefreshDocLinkPane(hwnd);
 }
 
 static int DocIdForHwnd(HWND hwnd) {
@@ -1375,6 +1462,90 @@ static void SyncDocFromWindow(HWND hwnd) {
     d->content = buf;
     d->dirty = true;
 }
+
+
+// ---------------------------------------------------------------------------
+// Selection helpers for document edit controls
+// ---------------------------------------------------------------------------
+static HWND ActiveDocEdit() {
+    if (!g_hClient) return nullptr;
+    HWND active = (HWND)SendMessageA(g_hClient, WM_MDIGETACTIVE, 0, 0);
+    if (!active) return nullptr;
+    return GetDlgItem(active, 9001);
+}
+
+static bool GetActiveSelection(int* start, int* end, std::string* snippet) {
+    HWND edit = ActiveDocEdit();
+    if (!edit) {
+        *start = *end = 0;
+        if (snippet) snippet->clear();
+        return false;
+    }
+    DWORD s = 0, e = 0;
+    SendMessageA(edit, EM_GETSEL, (WPARAM)&s, (LPARAM)&e);
+    *start = (int)s;
+    *end = (int)e;
+    if (snippet) {
+        snippet->clear();
+        if (e > s) {
+            int len = GetWindowTextLengthA(edit);
+            std::string all(len + 1, '\0');
+            GetWindowTextA(edit, &all[0], len + 1);
+            all.resize(len);
+            if ((int)s >= 0 && (int)e <= (int)all.size())
+                *snippet = all.substr(s, e - s);
+            if (snippet->size() > 60) {
+                *snippet = snippet->substr(0, 57) + "...";
+            }
+            // collapse newlines for descriptor
+            for (char& c : *snippet)
+                if (c == '\r' || c == '\n') c = ' ';
+        }
+    }
+    return true;
+}
+
+static void JumpToSpan(HWND docHwnd, int start, int end) {
+    HWND edit = GetDlgItem(docHwnd, 9001);
+    if (!edit) return;
+    if (end < start) end = start;
+    SendMessageA(edit, EM_SETSEL, (WPARAM)start, (LPARAM)end);
+    SendMessageA(edit, EM_SCROLLCARET, 0, 0);
+    SetFocus(edit);
+}
+
+static void RefreshDocLinkPane(HWND docHwnd) {
+    HWND list = GetDlgItem(docHwnd, 9010);
+    if (!list) return;
+    SendMessageA(list, LB_RESETCONTENT, 0, 0);
+    int docId = DocIdForHwnd(docHwnd);
+    if (!docId) return;
+    auto idxs = g_be.linksForDoc(docId);
+    for (int i : idxs) {
+        StubLink& L = g_be.links[i];
+        std::string line;
+        if (L.isAttachment) line = "[A] ";
+        else line = "[L] ";
+        line += L.descriptor.empty() ? L.title : L.descriptor;
+        int idx = (int)SendMessageA(list, LB_ADDSTRING, 0, (LPARAM)line.c_str());
+        SendMessageA(list, LB_SETITEMDATA, idx, (LPARAM)i);
+    }
+    if (idxs.empty())
+        SendMessageA(list, LB_ADDSTRING, 0, (LPARAM)"(no links for this document)");
+}
+
+static HWND OpenDocWindow(int docId, int selStart = 0, int selEnd = 0) {
+    StubDoc* d = g_be.get(docId);
+    if (!d) return nullptr;
+    g_be.activeDoc = docId;
+    g_be.grab(docId);
+    HWND h = CreateFormWindow(d->title.c_str(), 8);
+    if (h && (selEnd > selStart || selStart > 0))
+        JumpToSpan(h, selStart, selEnd > selStart ? selEnd : selStart + 1);
+    RefreshStatus();
+    return h;
+}
+
 
 
 LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1513,6 +1684,25 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 RefreshStatus();
             }
         }
+        if (type == 8 && (id == 9011 || (id == 9010 && HIWORD(wParam) == LBN_DBLCLK))) {
+            HWND list = GetDlgItem(hwnd, 9010);
+            int sel = (int)SendMessageA(list, LB_GETCURSEL, 0, 0);
+            int idx = (sel >= 0) ? (int)SendMessageA(list, LB_GETITEMDATA, sel, 0) : -1;
+            if (idx >= 0 && idx < (int)g_be.links.size()) {
+                StubLink& L = g_be.links[idx];
+                int docId = DocIdForHwnd(hwnd);
+                // Follow to the other end
+                int other = (L.fromDoc == docId) ? L.toDoc : L.fromDoc;
+                int s = (L.fromDoc == docId) ? L.toStart : L.fromStart;
+                int e = (L.fromDoc == docId) ? L.toEnd : L.fromEnd;
+                if (other)
+                    OpenDocWindow(other, s, e);
+            }
+        }
+        if (type == 8 && id == 9012) {
+            SyncDocFromWindow(hwnd);
+            RefreshDocLinkPane(hwnd);
+        }
         return 0;
     }
     case WM_MDIACTIVATE:
@@ -1552,6 +1742,7 @@ HMENU BuildMainMenu() {
     AppendMenuA(hDoc, MF_STRING, CM_GRAB,        "&Grab");
     AppendMenuA(hDoc, MF_STRING, CM_RELEASE,     "&Release");
     AppendMenuA(hDoc, MF_STRING, CM_NEWVARIANT,  "&New variant");
+    AppendMenuA(hDoc, MF_STRING, 256,            "&Variants...");
     AppendMenuA(hDoc, MF_STRING, 251,            "N&ew document");
     AppendMenuA(hDoc, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(hDoc, MF_STRING, CM_INFO,        "&Info");
@@ -1678,6 +1869,155 @@ int ShowFindDialog(HWND parent) {
 }
 
 
+int ShowReplaceDialog(HWND parent) {
+    HWND hDlg = BeginModalDialog(parent, "Replace", 400, 160);
+    CreateWindowA("STATIC", "Find what:", WS_CHILD | WS_VISIBLE,
+        16, 18, 70, 16, hDlg, nullptr, g_hInst, nullptr);
+    CreateWindowA("EDIT", g_be.lastFind.c_str(),
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
+        100, 16, 270, 22, hDlg, (HMENU)(intptr_t)9600, g_hInst, nullptr);
+    CreateWindowA("STATIC", "Replace with:", WS_CHILD | WS_VISIBLE,
+        16, 50, 80, 16, hDlg, nullptr, g_hInst, nullptr);
+    CreateWindowA("EDIT", g_be.lastReplace.c_str(),
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
+        100, 48, 270, 22, hDlg, (HMENU)(intptr_t)9601, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Replace All",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        150, 100, 100, 28, hDlg, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Cancel",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        270, 100, 80, 28, hDlg, (HMENU)IDCANCEL, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hDlg);
+    EnableWindow(parent, FALSE);
+    ShowWindow(hDlg, SW_SHOW);
+    MSG msg;
+    char findBuf[256] = {}, repBuf[256] = {};
+    int code = IDCANCEL;
+    while (IsWindow(hDlg) && GetMessageA(&msg, nullptr, 0, 0)) {
+        if (msg.message == WM_COMMAND) {
+            int cid = LOWORD(msg.wParam);
+            if (cid == IDOK) {
+                GetDlgItemTextA(hDlg, 9600, findBuf, sizeof(findBuf));
+                GetDlgItemTextA(hDlg, 9601, repBuf, sizeof(repBuf));
+                code = IDOK;
+                DestroyWindow(hDlg);
+                break;
+            }
+            if (cid == IDCANCEL) {
+                DestroyWindow(hDlg);
+                break;
+            }
+        }
+        if (!IsDialogMessageA(hDlg, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+    }
+    EnableWindow(parent, TRUE);
+    SetActiveWindow(parent);
+    if (code != IDOK || !findBuf[0]) return code;
+    g_be.lastFind = findBuf;
+    g_be.lastReplace = repBuf;
+    // Prefer active doc window content
+    HWND edit = ActiveDocEdit();
+    StubDoc* d = g_be.getActive();
+    if (!d) {
+        ClassicMessage(parent, "Replace", "No active document.");
+        return code;
+    }
+    std::string content;
+    if (edit) {
+        int len = GetWindowTextLengthA(edit);
+        content.resize(len + 1);
+        GetWindowTextA(edit, &content[0], len + 1);
+        content.resize(len);
+    } else {
+        content = d->content;
+    }
+    std::string find = findBuf, rep = repBuf;
+    int count = 0;
+    size_t pos = 0;
+    while ((pos = content.find(find, pos)) != std::string::npos) {
+        content.replace(pos, find.size(), rep);
+        pos += rep.size();
+        ++count;
+    }
+    d->content = content;
+    d->dirty = true;
+    if (edit) {
+        SetWindowTextA(edit, content.c_str());
+    }
+    char buf[128];
+    sprintf(buf, "Replaced %d occurrence(s).", count);
+    ClassicMessage(parent, "Replace", buf);
+    RefreshStatus();
+    return code;
+}
+
+int ShowVariantsDialog(HWND parent) {
+    g_be.seed();
+    StubDoc* d = g_be.getActive();
+    if (!d) {
+        ClassicMessage(parent, "Variants", "No active document.");
+        return IDCANCEL;
+    }
+    HWND hDlg = BeginModalDialog(parent, "Variants", 400, 260);
+    CreateWindowA("STATIC", "Variants of active document lineage",
+        WS_CHILD | WS_VISIBLE, 16, 12, 360, 16, hDlg, nullptr, g_hInst, nullptr);
+    HWND hList = CreateWindowA("LISTBOX", "",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY | WS_TABSTOP,
+        16, 36, 360, 150, hDlg, (HMENU)(intptr_t)9700, g_hInst, nullptr);
+    auto ids = g_be.variantsOf(d->id);
+    for (int id : ids) {
+        StubDoc* v = g_be.get(id);
+        if (!v) continue;
+        char line[256];
+        sprintf(line, "v%d  %s%s", v->variant, v->title.c_str(),
+            v->id == g_be.activeDoc ? "  (active)" : "");
+        int idx = (int)SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)line);
+        SendMessageA(hList, LB_SETITEMDATA, idx, (LPARAM)id);
+    }
+    CreateWindowA("BUTTON", "Open",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        16, 200, 80, 28, hDlg, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Close",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        110, 200, 80, 28, hDlg, (HMENU)IDCANCEL, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hDlg);
+    EnableWindow(parent, FALSE);
+    ShowWindow(hDlg, SW_SHOW);
+    MSG msg;
+    int code = IDCANCEL;
+    int chosen = 0;
+    while (IsWindow(hDlg) && GetMessageA(&msg, nullptr, 0, 0)) {
+        if (msg.message == WM_COMMAND) {
+            int cid = LOWORD(msg.wParam);
+            if (cid == IDOK || (cid == 9700 && HIWORD(msg.wParam) == LBN_DBLCLK)) {
+                int sel = (int)SendMessageA(hList, LB_GETCURSEL, 0, 0);
+                if (sel >= 0)
+                    chosen = (int)SendMessageA(hList, LB_GETITEMDATA, sel, 0);
+                code = IDOK;
+                DestroyWindow(hDlg);
+                break;
+            }
+            if (cid == IDCANCEL) {
+                DestroyWindow(hDlg);
+                break;
+            }
+        }
+        if (!IsDialogMessageA(hDlg, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+    }
+    EnableWindow(parent, TRUE);
+    SetActiveWindow(parent);
+    if (code == IDOK && chosen)
+        OpenDocWindow(chosen);
+    return code;
+}
+
+
 int ShowClubsDialog(HWND parent) {
     HWND hDlg = BeginModalDialog(parent, "Test Clubs", 360, 240);
     CreateWindowA("STATIC", "Permission clubs (stub mid-end)",
@@ -1754,6 +2094,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             break;
         case 250:
             CreateFormWindow("Document Browser", 9);
+            break;
+        case 256:
+            ShowVariantsDialog(hwnd);
             break;
         case 251: {
             g_be.seed();
@@ -1832,30 +2175,67 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             break;
         case CM_STARTLINK: {
             g_be.seed();
-            int from = g_be.startLink();
-            if (from)
-                ClassicMessage(hwnd, "Start Link", "Link start anchored on active document.\nSelect another document and use End Link.");
-            else
-                ClassicMessage(hwnd, "Start Link", "No active document.");
+            int s = 0, e = 0;
+            std::string snip;
+            GetActiveSelection(&s, &e, &snip);
+            if (s == e && ActiveDocEdit()) {
+                // No selection: use whole document as weak anchor
+                s = 0;
+                e = 0;
+            }
+            int from = g_be.startLink(s, e, snip);
+            if (from) {
+                char buf[256];
+                if (e > s)
+                    sprintf(buf, "Link start on selection [%d,%d]:\n%s", s, e, snip.c_str());
+                else
+                    sprintf(buf, "Link start on active document (no selection).\nSelect a span in another doc and End Link.");
+                ClassicMessage(hwnd, "Start Link", buf);
+            } else {
+                ClassicMessage(hwnd, "Start Link", "No active document.\nOpen/Grab a document first.");
+            }
             RefreshStatus();
             break;
         }
         case CM_ENDLINK: {
             g_be.seed();
-            int lid = g_be.endLink();
+            int s = 0, e = 0;
+            std::string snip;
+            GetActiveSelection(&s, &e, &snip);
+            int lid = g_be.endLink(s, e, snip);
             if (lid) {
-                char buf[128];
-                sprintf(buf, "Link #%d created.\n%s", lid, g_be.links.back().title.c_str());
+                char buf[256];
+                sprintf(buf, "Link #%d created.\n%s\n%s", lid,
+                    g_be.links.back().title.c_str(),
+                    g_be.links.back().descriptor.c_str());
                 ClassicMessage(hwnd, "End Link", buf);
+                // Refresh link panes of open doc windows
+                for (auto& kv : g_docHwnd)
+                    if (IsWindow(kv.first)) RefreshDocLinkPane(kv.first);
             } else {
-                ClassicMessage(hwnd, "End Link", "Need Start Link first, then a different active document.");
+                ClassicMessage(hwnd, "End Link", "Need Start Link first.");
             }
             RefreshStatus();
             break;
         }
-        case CM_ATTACHMENT:
-            ShowLinkInfoDialog(hwnd);
+        case CM_ATTACHMENT: {
+            g_be.seed();
+            int s = 0, e = 0;
+            std::string snip;
+            GetActiveSelection(&s, &e, &snip);
+            if (e <= s) {
+                ClassicMessage(hwnd, "Attachment", "Select text in a document window first.");
+                break;
+            }
+            int lid = g_be.attachSelection(s, e, snip);
+            char buf[256];
+            sprintf(buf, "Attachment #%d:\n%s", lid, snip.c_str());
+            ClassicMessage(hwnd, "Attachment", buf);
+            for (auto& kv : g_docHwnd)
+                if (IsWindow(kv.first)) RefreshDocLinkPane(kv.first);
+            RefreshStatus();
             break;
+        }
         case CM_GRAB: {
             g_be.seed();
             if (g_be.grab(g_be.activeDoc)) {
@@ -1970,7 +2350,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 ClassicMessage(hwnd, "Find", "Text not found.");
             break;
         case CM_EDITREPLACE:
-            ClassicMessage(hwnd, "Replace", "Replace not implemented in stub.\nUse Find + manual edit.");
+            ShowReplaceDialog(hwnd);
             break;
         case CM_CASCADECHILDREN:
             CascadeChildren();
