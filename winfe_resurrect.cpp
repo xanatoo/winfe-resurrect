@@ -663,7 +663,7 @@ HWND CreateFormWindow(const char* title, int type) {
     }
 
     int w = 380, h = 300;
-    if (type == 0) { w = 480; h = 200; }      // Desktop
+    if (type == 0) { w = 520; h = 360; }      // Desktop
     if (type == 1) { w = 560; h = 520; }      // Memo
     if (type == 2) { w = 600; h = 560; }      // Rate
     if (type == 3) { w = 620; h = 580; }      // Akord
@@ -672,6 +672,7 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 6) { w = 400; h = 140; }      // Reference Area (Tabs)
     if (type == 7) { w = 560; h = 580; }      // Contractual Profile
     if (type == 8) { w = 520; h = 400; }      // Document content (stub)
+    if (type == 9) { w = 420; h = 320; }      // Document browser
 
     HWND hwnd = CreateMDIWindowA(
         "WinFEMdiChild",
@@ -687,35 +688,57 @@ HWND CreateFormWindow(const char* title, int type) {
 
 // Extra form IDs for Desktop launch buttons
 enum {
-    FI_HOME_UM   = 104,
-    FI_HOME_TABS = 105,
-    FI_HOME_ATTN = 106,
-    FI_HOME_CPROF= 107
+    FI_HOME_UM     = 104,
+    FI_HOME_TABS   = 105,
+    FI_HOME_ATTN   = 106,
+    FI_HOME_CPROF  = 107,
+    FI_HOME_DOCS   = 108,
+    FI_HOME_DOCBASE= 200   // 200+N -> open seed doc by index
 };
 
 void BuildHomeForm(HWND hwnd) {
-    // Expanded desktop launcher
+    CreateWindowA("STATIC", "Forms",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        16, 8, 80, 14, hwnd, nullptr, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Akord form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 16, 110, 28, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
+        16, 28, 110, 26, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Rate form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        140, 16, 110, 28, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Memo 1",
+        140, 28, 110, 26, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Memo form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        264, 16, 110, 28, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
+        264, 28, 110, 26, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Underwriters Manual",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 56, 160, 28, hwnd, (HMENU)(intptr_t)FI_HOME_UM, g_hInst, nullptr);
+        16, 60, 150, 26, hwnd, (HMENU)(intptr_t)FI_HOME_UM, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Reference Area",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        190, 56, 130, 28, hwnd, (HMENU)(intptr_t)FI_HOME_TABS, g_hInst, nullptr);
+        180, 60, 120, 26, hwnd, (HMENU)(intptr_t)FI_HOME_TABS, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Attention",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        330, 56, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_ATTN, g_hInst, nullptr);
+        314, 60, 90, 26, hwnd, (HMENU)(intptr_t)FI_HOME_ATTN, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Contractual Profile",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 96, 160, 28, hwnd, (HMENU)(intptr_t)FI_HOME_CPROF, g_hInst, nullptr);
+        16, 92, 150, 26, hwnd, (HMENU)(intptr_t)FI_HOME_CPROF, g_hInst, nullptr);
+
+    CreateWindowA("STATIC", "Mid-end documents",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        16, 130, 160, 14, hwnd, nullptr, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Document Browser...",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        16, 150, 150, 26, hwnd, (HMENU)(intptr_t)FI_HOME_DOCS, g_hInst, nullptr);
+
+    // Quick-open buttons for each seeded document
+    g_be.seed();
+    int x = 180, y = 150, n = 0;
+    for (auto& kv : g_be.docs) {
+        CreateWindowA("BUTTON", kv.second.title.c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+            x, y, 220, 24, hwnd, (HMENU)(intptr_t)(FI_HOME_DOCBASE + n), g_hInst, nullptr);
+        y += 28;
+        if (++n >= 6) break;
+    }
     ApplyClassicFontToChildren(hwnd);
 }
 
@@ -1106,6 +1129,34 @@ void BuildAkordForm(HWND hwnd) {
 }
 
 
+
+void BuildDocBrowser(HWND hwnd) {
+    g_be.seed();
+    CreateWindowA("STATIC", "Documents in mid-end (double-click via Open)",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        12, 10, 380, 16, hwnd, nullptr, g_hInst, nullptr);
+    HWND hList = CreateWindowA("LISTBOX", "",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY | WS_TABSTOP,
+        12, 32, 380, 200, hwnd, (HMENU)(intptr_t)9100, g_hInst, nullptr);
+    for (auto& kv : g_be.docs) {
+        std::string line = kv.second.title;
+        if (kv.second.grabbed) line += " [GRABBED]";
+        if (kv.second.dirty) line += " *";
+        int idx = (int)SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)line.c_str());
+        SendMessageA(hList, LB_SETITEMDATA, idx, (LPARAM)kv.second.id);
+    }
+    CreateWindowA("BUTTON", "Open / Grab",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        12, 250, 110, 28, hwnd, (HMENU)(intptr_t)9101, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Make Active",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        135, 250, 110, 28, hwnd, (HMENU)(intptr_t)9102, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Info...",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        258, 250, 90, 28, hwnd, (HMENU)(intptr_t)9103, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hwnd);
+}
+
 void BuildDocForm(HWND hwnd) {
     g_be.seed();
     StubDoc* d = g_be.getActive();
@@ -1149,6 +1200,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 6: BuildTabsForm(hwnd); break;
         case 7: BuildCprofForm(hwnd); break;
         case 8: BuildDocForm(hwnd); break;
+        case 9: BuildDocBrowser(hwnd); break;
         }
         return 0;
     }
@@ -1162,6 +1214,42 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             if (id == FI_HOME_ATTN)  CreateFormWindow("Attention", 5);
             if (id == FI_HOME_TABS)  CreateFormWindow("Reference Area", 6);
             if (id == FI_HOME_CPROF) CreateFormWindow("Contractual Profile", 7);
+            if (id == FI_HOME_DOCS)  CreateFormWindow("Document Browser", 9);
+            if (id >= FI_HOME_DOCBASE && id < FI_HOME_DOCBASE + 32) {
+                g_be.seed();
+                int n = 0;
+                for (auto& kv : g_be.docs) {
+                    if (n == id - FI_HOME_DOCBASE) {
+                        g_be.activeDoc = kv.second.id;
+                        g_be.grab(kv.second.id);
+                        CreateFormWindow(kv.second.title.c_str(), 8);
+                        RefreshStatus();
+                        break;
+                    }
+                    ++n;
+                }
+            }
+        }
+        if (type == 9) {
+            HWND hList = GetDlgItem(hwnd, 9100);
+            int sel = (int)SendMessageA(hList, LB_GETCURSEL, 0, 0);
+            int docId = (sel >= 0) ? (int)SendMessageA(hList, LB_GETITEMDATA, sel, 0) : 0;
+            if (id == 9101 || (id == 9100 && HIWORD(wParam) == LBN_DBLCLK)) {
+                if (docId) {
+                    g_be.activeDoc = docId;
+                    g_be.grab(docId);
+                    StubDoc* d = g_be.get(docId);
+                    CreateFormWindow(d ? d->title.c_str() : "Document", 8);
+                    RefreshStatus();
+                }
+            } else if (id == 9102 && docId) {
+                g_be.activeDoc = docId;
+                RefreshStatus();
+                ClassicMessage(hwnd, "Active", "Active document changed.");
+            } else if (id == 9103 && docId) {
+                g_be.activeDoc = docId;
+                ShowDocInfoDialog(hwnd);
+            }
         }
         // Reference Area buttons open other forms
         if (type == 6) {
@@ -1224,6 +1312,7 @@ HMENU BuildMainMenu() {
     AppendMenuA(hDoc, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(hDoc, MF_STRING, CM_SAVE,        "Save All");
     AppendMenuA(hDoc, MF_STRING, CM_RETURNHOME,  "Return &Home");
+    AppendMenuA(hDoc, MF_STRING, 250,            "Document &Browser...");
     AppendMenuA(hDoc, MF_STRING, CM_INITIALIZE,  "Initiali&ze");
     AppendMenuA(hDoc, MF_STRING, CM_TESTCLUBS,   "Test Clubs");
     AppendMenuA(hDoc, MF_SEPARATOR, 0, nullptr);
@@ -1261,7 +1350,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
         // MDI client fills the frame (above status bar)
         CLIENTCREATESTRUCT ccs = {};
-        ccs.hWindowMenu  = nullptr; // Window menu not owner-drawn; optional
+        // Window menu is the 3rd top-level popup (Document=0, Edit=1, Window=2)
+        HMENU hMenu = GetMenu(hwnd);
+        ccs.hWindowMenu  = hMenu ? GetSubMenu(hMenu, 2) : nullptr;
         ccs.idFirstChild = 5000;
         g_hClient = CreateWindowExA(WS_EX_CLIENTEDGE, "MDICLIENT", nullptr,
             WS_CHILD | WS_CLIPCHILDREN | WS_VSCROLL | WS_HSCROLL | WS_VISIBLE,
@@ -1299,6 +1390,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case CM_RETURNHOME:
             CreateFormWindow("Desktop", 0);
             RefreshStatus();
+            break;
+        case 250:
+            CreateFormWindow("Document Browser", 9);
             break;
         case CM_INITIALIZE:
             g_be = Backend();
