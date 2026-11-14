@@ -21,6 +21,8 @@
 #include <commctrl.h>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #pragma comment(lib, "comctl32.lib")
@@ -102,6 +104,54 @@ HWND      g_hMain   = nullptr;
 HWND      g_hStatus = nullptr;
 HFONT     g_hFont   = nullptr;
 int       g_childCount = 0;
+std::vector<HWND> g_children;
+
+void TrackChild(HWND hwnd) {
+    g_children.push_back(hwnd);
+}
+void UntrackChild(HWND hwnd) {
+    auto it = std::remove(g_children.begin(), g_children.end(), hwnd);
+    g_children.erase(it, g_children.end());
+}
+void CloseAllChildren() {
+    auto copy = g_children;
+    for (HWND h : copy) {
+        if (IsWindow(h)) DestroyWindow(h);
+    }
+    g_children.clear();
+}
+void CascadeChildren() {
+    int x = 10, y = 10;
+    for (HWND h : g_children) {
+        if (!IsWindow(h)) continue;
+        ShowWindow(h, SW_RESTORE);
+        SetWindowPos(h, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        x += 28; y += 28;
+    }
+}
+void TileChildren() {
+    if (g_children.empty()) return;
+    RECT rc;
+    GetClientRect(g_hMain, &rc);
+    rc.bottom -= 24; // leave room for status bar
+    int n = (int)g_children.size();
+    int cols = (int)std::ceil(std::sqrt((double)n));
+    if (cols < 1) cols = 1;
+    int rows = (n + cols - 1) / cols;
+    int w = (rc.right - rc.left) / cols;
+    int h = (rc.bottom - rc.top) / rows;
+    int i = 0;
+    for (HWND hwnd : g_children) {
+        if (!IsWindow(hwnd)) continue;
+        int col = i % cols;
+        int row = i / cols;
+        ShowWindow(hwnd, SW_RESTORE);
+        SetWindowPos(hwnd, nullptr,
+            rc.left + col * w, rc.top + row * h,
+            w, h, SWP_NOZORDER);
+        ++i;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -412,6 +462,7 @@ HWND CreateFormWindow(const char* title, int type) {
         30 + g_childCount * 28, 40 + g_childCount * 28,
         w, h,
         g_hMain, nullptr, g_hInst, (LPVOID)(intptr_t)type);
+    if (hwnd) TrackChild(hwnd);
     return hwnd;
 }
 
@@ -634,6 +685,9 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
+    case WM_DESTROY:
+        UntrackChild(hwnd);
+        return 0;
     }
     return DefWindowProcA(hwnd, msg, wParam, lParam);
 }
@@ -697,7 +751,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CREATE: {
         g_hFont = CreateClassicFont(-12, false);
         g_hStatus = CreateWindowA("STATIC",
-            " Udanax Gold Frontend  —  1993 visual resurrection (step 3)  |  Full Akord form from akord.pvt",
+            " Udanax Gold Frontend  —  1993 visual resurrection (step 5)  |  Cascade / Tile / Close All work",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)ID_MAIN_STATUS, g_hInst, nullptr);
         SetClassicFont(g_hStatus);
@@ -745,9 +799,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case CM_EDITFIND: case CM_EDITREPLACE: case CM_EDITFINDNEXT:
             ClassicMessage(hwnd, "Edit", "Standard edit command (menu fidelity).");
             break;
-        case CM_CASCADECHILDREN: case CM_TILECHILDREN:
-        case CM_ARRANGEICONS: case CM_CLOSECHILDREN:
-            ClassicMessage(hwnd, "Window", "MDI management (visual stub).");
+        case CM_CASCADECHILDREN:
+            CascadeChildren();
+            break;
+        case CM_TILECHILDREN:
+            TileChildren();
+            break;
+        case CM_ARRANGEICONS:
+            CascadeChildren(); // close enough for this resurrection
+            break;
+        case CM_CLOSECHILDREN:
+            CloseAllChildren();
             break;
         }
         return 0;
