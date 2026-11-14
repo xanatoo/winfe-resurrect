@@ -677,15 +677,22 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 9) { w = 420; h = 320; }      // Document browser
     if (type == 10) { w = 420; h = 320; }     // Link browser
 
+    // Encode type as type+1 so lpCreateParams is never NULL (type 0 Desktop)
     HWND hwnd = CreateMDIWindowA(
         "WinFEMdiChild",
         title,
         WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS |
-            WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, w, h,
+            WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
+        12 + (g_childCount % 8) * 24,
+        12 + (g_childCount % 8) * 24,
+        w, h,
         g_hClient,
         g_hInst,
-        (LPARAM)(intptr_t)type);
+        (LPARAM)(intptr_t)(type + 1));
+    if (hwnd) {
+        ShowWindow(hwnd, SW_SHOW);
+        UpdateWindow(hwnd);
+    }
     return hwnd;
 }
 
@@ -700,49 +707,48 @@ enum {
 };
 
 void BuildHomeForm(HWND hwnd) {
-    CreateWindowA("STATIC", "Forms",
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        16, 8, 80, 14, hwnd, nullptr, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Akord form",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 28, 110, 26, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Rate form",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        140, 28, 110, 26, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Memo form",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        264, 28, 110, 26, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Underwriters Manual",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 60, 150, 26, hwnd, (HMENU)(intptr_t)FI_HOME_UM, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Reference Area",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        180, 60, 120, 26, hwnd, (HMENU)(intptr_t)FI_HOME_TABS, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Attention",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        314, 60, 90, 26, hwnd, (HMENU)(intptr_t)FI_HOME_ATTN, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Contractual Profile",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 92, 150, 26, hwnd, (HMENU)(intptr_t)FI_HOME_CPROF, g_hInst, nullptr);
-
-    CreateWindowA("STATIC", "Mid-end documents",
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        16, 130, 160, 14, hwnd, nullptr, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Document Browser...",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 150, 150, 26, hwnd, (HMENU)(intptr_t)FI_HOME_DOCS, g_hInst, nullptr);
-
-    // Quick-open buttons for each seeded document
-    g_be.seed();
-    int x = 180, y = 150, n = 0;
-    for (auto& kv : g_be.docs) {
-        CreateWindowA("BUTTON", kv.second.title.c_str(),
+    auto btn = [&](const char* label, int id, int x, int y, int w, int h) {
+        HWND h = CreateWindowA("BUTTON", label,
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-            x, y, 220, 24, hwnd, (HMENU)(intptr_t)(FI_HOME_DOCBASE + n), g_hInst, nullptr);
-        y += 28;
+            x, y, w, h, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+        if (h) ShowWindow(h, SW_SHOW);
+        return h;
+    };
+    auto lab = [&](const char* t, int x, int y, int w) {
+        HWND h = CreateWindowA("STATIC", t,
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            x, y, w, 16, hwnd, nullptr, g_hInst, nullptr);
+        if (h) ShowWindow(h, SW_SHOW);
+        return h;
+    };
+
+    lab("Desktop — forms and mid-end documents", 12, 8, 400);
+    lab("Forms", 12, 32, 80);
+
+    btn("Akord form",          FI_HOME_AKORD, 12,  52, 120, 28);
+    btn("Rate form",           FI_HOME_RATE,  144, 52, 120, 28);
+    btn("Memo form",           FI_HOME_MEMO1, 276, 52, 120, 28);
+    btn("Underwriters Manual",FI_HOME_UM,    12,  88, 160, 28);
+    btn("Reference Area",     FI_HOME_TABS,  184, 88, 130, 28);
+    btn("Attention",          FI_HOME_ATTN,  326, 88, 100, 28);
+    btn("Contractual Profile",FI_HOME_CPROF, 12, 124, 160, 28);
+    btn("Document Browser...",FI_HOME_DOCS,  184, 124, 160, 28);
+    btn("Link Browser...",    109,           356, 124, 120, 28);
+
+    lab("Mid-end documents (open / grab)", 12, 168, 300);
+
+    g_be.seed();
+    int y = 190, n = 0;
+    for (auto& kv : g_be.docs) {
+        btn(kv.second.title.c_str(), FI_HOME_DOCBASE + n, 12, y, 280, 26);
+        y += 30;
         if (++n >= 6) break;
     }
+    if (n == 0)
+        lab("(no documents — use Initialize)", 12, 190, 300);
+
     ApplyClassicFontToChildren(hwnd);
+    InvalidateRect(hwnd, nullptr, TRUE);
 }
 
 void BuildMemoForm(HWND hwnd) {
@@ -1220,7 +1226,9 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     switch (msg) {
     case WM_CREATE: {
         CREATESTRUCTA* cs = (CREATESTRUCTA*)lParam;
-        type = (int)(intptr_t)cs->lpCreateParams;
+        // type was encoded as type+1 so Desktop (0) is not a NULL lpCreateParams
+        int encoded = (int)(intptr_t)cs->lpCreateParams;
+        type = encoded > 0 ? encoded - 1 : 0;
         SetWindowLongPtrA(hwnd, GWLP_USERDATA, (LONG_PTR)type);
         switch (type) {
         case 0: BuildHomeForm(hwnd); break;
@@ -1235,7 +1243,8 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 9: BuildDocBrowser(hwnd); break;
         case 10: BuildLinkBrowser(hwnd); break;
         }
-        return 0;
+        // Let DefMDIChildProc finish MDI child creation
+        break;
     }
     case WM_COMMAND: {
         int id = LOWORD(wParam);
@@ -1248,6 +1257,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             if (id == FI_HOME_TABS)  CreateFormWindow("Reference Area", 6);
             if (id == FI_HOME_CPROF) CreateFormWindow("Contractual Profile", 7);
             if (id == FI_HOME_DOCS)  CreateFormWindow("Document Browser", 9);
+            if (id == 109) CreateFormWindow("Link Browser", 10);
             if (id >= FI_HOME_DOCBASE && id < FI_HOME_DOCBASE + 32) {
                 g_be.seed();
                 int n = 0;
