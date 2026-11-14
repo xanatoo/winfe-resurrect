@@ -1,8 +1,9 @@
 /*
  * winfe_resurrect.cpp
  *
- * Pure visual resurrection of the 1993 Udanax Gold Windows frontend (winfe).
- * Historical effort only — no real backend, no Xanadu protocol.
+ * Visual resurrection of the 1993 Udanax Gold Windows frontend (winfe).
+ * In-memory backend stub for pseudo document / link operations.
+ * Historical effort — not a real FeBe / Xanadu protocol client.
  *
  * Step 2: More accurate dialog layouts taken directly from fe.rc,
  *          proper modal Login / Document Info / Link Info dialogs,
@@ -24,6 +25,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
+#include <sstream>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "user32.lib")
@@ -152,6 +155,220 @@ void ClassicMessage(HWND parent, const char* title, const char* text) {
     MessageBoxA(parent, text, title, MB_OK | MB_ICONINFORMATION);
 }
 
+
+void SetStatus(const char* text) {
+    if (g_hStatus) SetWindowTextA(g_hStatus, text);
+}
+
+// ---------------------------------------------------------------------------
+// In-memory backend stub (pseudo FeBe)
+// ---------------------------------------------------------------------------
+struct StubDoc {
+    int id = 0;
+    std::string title;
+    std::string owner = "System Admin";
+    std::string content;
+    std::string lastRevBy = "Ravi Pandya";
+    std::string currentEditor = "(none)";
+    int readPerm = 0;   // 0 Private, 1 Club, 2 Public
+    int editPerm = 0;
+    int history  = 0;   // 0 None, 1 Basic, 2 Full
+    int variant  = 1;
+    bool grabbed = false;
+    bool dirty   = false;
+};
+
+struct StubLink {
+    int id = 0;
+    std::string title;
+    std::string owner = "System Admin";
+    int fromDoc = 0;
+    int toDoc   = 0;
+    int readPerm = 0;
+    int editPerm = 0;
+    std::string lastRevBy = "Ravi Pandya";
+    bool pendingStart = false;
+};
+
+struct Backend {
+    bool connected = false;
+    std::string host = "socket vlad 65002";
+    std::string user = "System Admin";
+    int nextDocId  = 1;
+    int nextLinkId = 1;
+    int activeDoc  = 0;
+    int pendingLinkFrom = 0; // for Start Link / End Link
+    std::map<int, StubDoc> docs;
+    std::vector<StubLink> links;
+
+    void seed() {
+        if (!docs.empty()) return;
+        StubDoc home;
+        home.id = nextDocId++;
+        home.title = "Desktop";
+        home.content =
+            "Udanax Gold Desktop\r\n"
+            "==================\r\n\r\n"
+            "This is a stub mid-end. Documents and links are held in memory only.\r\n";
+        home.readPerm = 2;
+        docs[home.id] = home;
+
+        StubDoc memo;
+        memo.id = nextDocId++;
+        memo.title = "Memo: Enfilade progress";
+        memo.owner = "Ravi Pandya";
+        memo.content =
+            "To: Ted Nelson\r\n"
+            "From: Ravi Pandya\r\n\r\n"
+            "The coordinate space work is looking solid.\r\n"
+            "Transclusion tests pass on the current Ent.\r\n";
+        memo.readPerm = 1;
+        memo.editPerm = 1;
+        docs[memo.id] = memo;
+
+        StubDoc cgl;
+        cgl.id = nextDocId++;
+        cgl.title = "Unlucky Markets — CGL package";
+        cgl.content =
+            "Applicant: Unlucky Markets\r\n"
+            "Producer: Willy Loman\r\n"
+            "Effective: 4/1/93 — 4/1/94\r\n"
+            "Coverages: CGL, Products/Completed Ops, Contractual\r\n";
+        cgl.readPerm = 1;
+        docs[cgl.id] = cgl;
+
+        StubLink l;
+        l.id = nextLinkId++;
+        l.title = "Memo → CGL package";
+        l.fromDoc = memo.id;
+        l.toDoc = cgl.id;
+        l.readPerm = 1;
+        links.push_back(l);
+
+        activeDoc = home.id;
+    }
+
+    StubDoc* getActive() {
+        auto it = docs.find(activeDoc);
+        return it == docs.end() ? nullptr : &it->second;
+    }
+
+    StubDoc* get(int id) {
+        auto it = docs.find(id);
+        return it == docs.end() ? nullptr : &it->second;
+    }
+
+    int createDoc(const std::string& title) {
+        StubDoc d;
+        d.id = nextDocId++;
+        d.title = title;
+        d.owner = user;
+        d.content = "(new document)\r\n";
+        d.currentEditor = user;
+        d.grabbed = true;
+        d.dirty = true;
+        docs[d.id] = d;
+        activeDoc = d.id;
+        return d.id;
+    }
+
+    bool grab(int id) {
+        StubDoc* d = get(id);
+        if (!d) return false;
+        if (d->grabbed && d->currentEditor != user) return false;
+        d->grabbed = true;
+        d->currentEditor = user;
+        activeDoc = id;
+        return true;
+    }
+
+    bool release(int id) {
+        StubDoc* d = get(id);
+        if (!d || !d->grabbed) return false;
+        d->grabbed = false;
+        d->currentEditor = "(none)";
+        d->lastRevBy = user;
+        return true;
+    }
+
+    bool save(int id) {
+        StubDoc* d = get(id);
+        if (!d) return false;
+        d->dirty = false;
+        d->lastRevBy = user;
+        return true;
+    }
+
+    bool newVariant(int id) {
+        StubDoc* d = get(id);
+        if (!d) return false;
+        StubDoc v = *d;
+        v.id = nextDocId++;
+        v.variant = d->variant + 1;
+        v.title = d->title + " (v" + std::to_string(v.variant) + ")";
+        v.grabbed = true;
+        v.dirty = true;
+        v.currentEditor = user;
+        docs[v.id] = v;
+        activeDoc = v.id;
+        return true;
+    }
+
+    bool remove(int id) {
+        if (docs.erase(id) == 0) return false;
+        if (activeDoc == id) activeDoc = docs.empty() ? 0 : docs.begin()->first;
+        return true;
+    }
+
+    int startLink() {
+        if (!activeDoc) return 0;
+        pendingLinkFrom = activeDoc;
+        return pendingLinkFrom;
+    }
+
+    int endLink() {
+        if (!pendingLinkFrom || !activeDoc || pendingLinkFrom == activeDoc)
+            return 0;
+        StubLink l;
+        l.id = nextLinkId++;
+        StubDoc* a = get(pendingLinkFrom);
+        StubDoc* b = get(activeDoc);
+        l.title = (a ? a->title : "?") + " → " + (b ? b->title : "?");
+        l.fromDoc = pendingLinkFrom;
+        l.toDoc = activeDoc;
+        l.owner = user;
+        links.push_back(l);
+        int id = l.id;
+        pendingLinkFrom = 0;
+        return id;
+    }
+
+    std::string statusLine() const {
+        std::ostringstream os;
+        os << " " << (connected ? "Connected" : "Offline")
+           << "  " << host
+           << "  |  user: " << user
+           << "  |  docs: " << docs.size()
+           << "  links: " << links.size();
+        if (activeDoc) {
+            auto it = docs.find(activeDoc);
+            if (it != docs.end()) {
+                os << "  |  active: " << it->second.title;
+                if (it->second.grabbed) os << " [GRABBED]";
+                if (it->second.dirty) os << " *";
+            }
+        }
+        if (pendingLinkFrom) os << "  |  link-start set";
+        return os.str();
+    }
+};
+
+static Backend g_be;
+
+void RefreshStatus() {
+    SetStatus(g_be.statusLine().c_str());
+}
+
 // Convert rough dialog units to pixels (approximate for 8pt MS Sans Serif)
 int duX(int d) { return (d * 6) / 4; }   // ~1.5x
 int duY(int d) { return (d * 13) / 8; }  // ~1.625x
@@ -266,14 +483,24 @@ int ShowLoginDialog(HWND parent) {
     SetClassicFont(hDlg);
 
     ModalResult res;
-    return RunModalLoop(hDlg, &res);
+    int code = RunModalLoop(hDlg, &res);
+    if (code == IDOK) {
+        g_be.connected = true;
+        g_be.host = "socket vlad 65002";
+        g_be.user = "System Admin";
+    }
+    g_be.seed();
+    RefreshStatus();
+    return code;
 }
 
 // ---------------------------------------------------------------------------
 // Link Info dialog (matches ID_LINKINFO)
 // ---------------------------------------------------------------------------
 int ShowLinkInfoDialog(HWND parent) {
-    HWND hDlg = BeginModalDialog(parent, "Link info", 360, 280);
+    g_be.seed();
+    StubLink* L = g_be.links.empty() ? nullptr : &g_be.links.back();
+    HWND hDlg = BeginModalDialog(parent, "Link info", 400, 300);
 
     auto label = [&](const char* t, int x, int y, int w = 120) {
         CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_RIGHT,
@@ -292,10 +519,10 @@ int ShowLinkInfoDialog(HWND parent) {
     };
 
     label("Owner:", 12, 16);
-    edit(ID_OWNER, 140, 14, 180, "System Admin");
+    edit(ID_OWNER, 140, 14, 220, L ? L->owner.c_str() : g_be.user.c_str());
 
     label("Title:", 12, 46);
-    edit(ID_TITLE, 140, 44, 180, "Sample Link");
+    edit(ID_TITLE, 140, 44, 220, L ? L->title.c_str() : "(no links yet)");
 
     label("Read permission:", 12, 80);
     HWND hRead = combo(ID_READPERM, 140, 78, 140);
@@ -311,9 +538,13 @@ int ShowLinkInfoDialog(HWND parent) {
     SendMessageA(hEdit, CB_SETCURSEL, 0, 0);
 
     label("Last revision by:", 12, 150);
-    edit(ID_LASTREVISIONBY, 140, 148, 180, "Ravi Pandya");
+    edit(ID_LASTREVISIONBY, 140, 148, 220, L ? L->lastRevBy.c_str() : g_be.user.c_str());
     label("Current editor:", 12, 180);
-    edit(ID_CURRENTEDITOR, 140, 178, 180, "(none)");
+    edit(ID_CURRENTEDITOR, 140, 178, 220, "(none)");
+
+    char countbuf[64];
+    sprintf(countbuf, "Links in mid-end: %d", (int)g_be.links.size());
+    CreateWindowA("STATIC", countbuf, WS_CHILD | WS_VISIBLE, 20, 210, 220, 16, hDlg, nullptr, g_hInst, nullptr);
 
     CreateWindowA("BUTTON", "&OK",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
@@ -333,7 +564,11 @@ int ShowLinkInfoDialog(HWND parent) {
 // Document Info dialog (matches ID_DOCINFO)
 // ---------------------------------------------------------------------------
 int ShowDocInfoDialog(HWND parent) {
-    HWND hDlg = BeginModalDialog(parent, "Document info for ", 440, 340);
+    g_be.seed();
+    StubDoc* d = g_be.getActive();
+    std::string caption = "Document info for ";
+    caption += d ? d->title : "(none)";
+    HWND hDlg = BeginModalDialog(parent, caption.c_str(), 440, 360);
 
     auto label = [&](const char* t, int x, int y, int w = 120) {
         CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_RIGHT,
@@ -341,12 +576,12 @@ int ShowDocInfoDialog(HWND parent) {
     };
 
     label("Title:", 12, 16, 50);
-    CreateWindowA("EDIT", "Untitled Document",
+    CreateWindowA("EDIT", d ? d->title.c_str() : "",
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
         70, 14, 340, 22, hDlg, (HMENU)(intptr_t)ID_TITLE, g_hInst, nullptr);
 
     label("Owner:", 12, 50, 50);
-    CreateWindowA("STATIC", "System Admin",
+    CreateWindowA("STATIC", d ? d->owner.c_str() : "",
         WS_CHILD | WS_VISIBLE,
         70, 50, 200, 16, hDlg, (HMENU)(intptr_t)ID_OWNER, g_hInst, nullptr);
 
@@ -436,6 +671,7 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 5) { w = 420; h = 160; }      // Attention
     if (type == 6) { w = 400; h = 140; }      // Reference Area (Tabs)
     if (type == 7) { w = 560; h = 580; }      // Contractual Profile
+    if (type == 8) { w = 520; h = 400; }      // Document content (stub)
 
     HWND hwnd = CreateMDIWindowA(
         "WinFEMdiChild",
@@ -869,6 +1105,32 @@ void BuildAkordForm(HWND hwnd) {
     ApplyClassicFontToChildren(hwnd);
 }
 
+
+void BuildDocForm(HWND hwnd) {
+    g_be.seed();
+    StubDoc* d = g_be.getActive();
+    CreateWindowA("STATIC", d ? d->title.c_str() : "Document",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        8, 6, 480, 16, hwnd, nullptr, g_hInst, nullptr);
+    std::string meta;
+    if (d) {
+        meta = "Owner: " + d->owner + "   Variant: " + std::to_string(d->variant);
+        if (d->grabbed) meta += "   [GRABBED]";
+        if (d->dirty) meta += " *";
+    }
+    CreateWindowA("STATIC", meta.c_str(),
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        8, 24, 480, 16, hwnd, nullptr, g_hInst, nullptr);
+    HWND hEdit = CreateWindowA("EDIT", d ? d->content.c_str() : "",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
+        ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_TABSTOP,
+        8, 48, 490, 300, hwnd, (HMENU)(intptr_t)9001, g_hInst, nullptr);
+    // Store doc id in GWLP_USERDATA high half? type is already there.
+    // Keep content edits local; Save reads back.
+    ApplyClassicFontToChildren(hwnd);
+}
+
+
 LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     int type = (int)(intptr_t)GetWindowLongPtrA(hwnd, GWLP_USERDATA);
 
@@ -886,6 +1148,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 5: BuildAttnForm(hwnd); break;
         case 6: BuildTabsForm(hwnd); break;
         case 7: BuildCprofForm(hwnd); break;
+        case 8: BuildDocForm(hwnd); break;
         }
         return 0;
     }
@@ -910,10 +1173,24 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         if (id == FI_MEMO_REFERENCE) {
             ShowLinkInfoDialog(hwnd);
         }
+        if (type == 8 && id == 9001 && HIWORD(wParam) == EN_CHANGE) {
+            if (StubDoc* d = g_be.getActive()) {
+                d->dirty = true;
+                RefreshStatus();
+            }
+        }
         return 0;
     }
     case WM_CLOSE:
-        // Ask MDI client to destroy us
+        if (type == 8) {
+            char buf[8192];
+            GetDlgItemTextA(hwnd, 9001, buf, sizeof(buf));
+            if (StubDoc* d = g_be.getActive()) {
+                d->content = buf;
+                d->dirty = true;
+            }
+            RefreshStatus();
+        }
         if (g_hClient)
             SendMessageA(g_hClient, WM_MDIDESTROY, (WPARAM)hwnd, 0);
         else
@@ -991,7 +1268,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)1, g_hInst, &ccs);
 
         g_hStatus = CreateWindowA("STATIC",
-            " Udanax Gold Frontend  —  1993 visual resurrection (step 8)  |  true MDI children",
+            " Udanax Gold Frontend  —  offline  |  stub mid-end",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)ID_MAIN_STATUS, g_hInst, nullptr);
         SetClassicFont(g_hStatus);
@@ -1020,28 +1297,137 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             PostMessageA(hwnd, WM_CLOSE, 0, 0);
             break;
         case CM_RETURNHOME:
-        case CM_INITIALIZE:
             CreateFormWindow("Desktop", 0);
+            RefreshStatus();
+            break;
+        case CM_INITIALIZE:
+            g_be = Backend();
+            g_be.connected = true;
+            g_be.seed();
+            CloseAllChildren();
+            CreateFormWindow("Desktop", 0);
+            ClassicMessage(hwnd, "Initialize", "Mid-end reinitialized with seed documents.");
+            RefreshStatus();
             break;
         case CM_INFO:
             ShowDocInfoDialog(hwnd);
             break;
         case CM_LINKS:
-        case CM_STARTLINK:
-        case CM_ENDLINK:
+            ShowLinkInfoDialog(hwnd);
+            break;
+        case CM_STARTLINK: {
+            g_be.seed();
+            int from = g_be.startLink();
+            if (from)
+                ClassicMessage(hwnd, "Start Link", "Link start anchored on active document.\nSelect another document and use End Link.");
+            else
+                ClassicMessage(hwnd, "Start Link", "No active document.");
+            RefreshStatus();
+            break;
+        }
+        case CM_ENDLINK: {
+            g_be.seed();
+            int lid = g_be.endLink();
+            if (lid) {
+                char buf[128];
+                sprintf(buf, "Link #%d created.\n%s", lid, g_be.links.back().title.c_str());
+                ClassicMessage(hwnd, "End Link", buf);
+            } else {
+                ClassicMessage(hwnd, "End Link", "Need Start Link first, then a different active document.");
+            }
+            RefreshStatus();
+            break;
+        }
         case CM_ATTACHMENT:
             ShowLinkInfoDialog(hwnd);
             break;
-        case CM_GRAB: case CM_RELEASE: case CM_NEWVARIANT:
-        case CM_SAVE: case CM_DELETE: case CM_TESTCLUBS:
-            ClassicMessage(hwnd, "Document",
-                "Historical command recognised.\nNo live backend in this visual resurrection.");
+        case CM_GRAB: {
+            g_be.seed();
+            if (g_be.grab(g_be.activeDoc)) {
+                StubDoc* d = g_be.getActive();
+                char buf[256];
+                sprintf(buf, "Grabbed \"%s\" for editing.", d ? d->title.c_str() : "?");
+                ClassicMessage(hwnd, "Grab", buf);
+                CreateFormWindow(d ? d->title.c_str() : "Document", 8);
+            } else {
+                ClassicMessage(hwnd, "Grab", "Could not grab document (held by another editor?).");
+            }
+            RefreshStatus();
+            break;
+        }
+        case CM_RELEASE: {
+            g_be.seed();
+            if (g_be.release(g_be.activeDoc))
+                ClassicMessage(hwnd, "Release", "Document released.");
+            else
+                ClassicMessage(hwnd, "Release", "Document was not grabbed.");
+            RefreshStatus();
+            break;
+        }
+        case CM_NEWVARIANT: {
+            g_be.seed();
+            if (g_be.newVariant(g_be.activeDoc)) {
+                StubDoc* d = g_be.getActive();
+                char buf[256];
+                sprintf(buf, "Created variant %d:\n%s", d->variant, d->title.c_str());
+                ClassicMessage(hwnd, "New variant", buf);
+                CreateFormWindow(d->title.c_str(), 8);
+            } else {
+                ClassicMessage(hwnd, "New variant", "No active document.");
+            }
+            RefreshStatus();
+            break;
+        }
+        case CM_SAVE: {
+            g_be.seed();
+            // Pull content from active MDI child if it is a document form
+            if (g_hClient) {
+                HWND active = (HWND)SendMessageA(g_hClient, WM_MDIGETACTIVE, 0, 0);
+                if (active) {
+                    HWND edit = GetDlgItem(active, 9001);
+                    if (edit) {
+                        char buf[8192];
+                        GetWindowTextA(edit, buf, sizeof(buf));
+                        if (StubDoc* d = g_be.getActive()) {
+                            d->content = buf;
+                        }
+                    }
+                }
+            }
+            if (g_be.save(g_be.activeDoc))
+                ClassicMessage(hwnd, "Save All", "Active document saved (in-memory).");
+            else
+                ClassicMessage(hwnd, "Save All", "Nothing to save.");
+            RefreshStatus();
+            break;
+        }
+        case CM_DELETE: {
+            g_be.seed();
+            StubDoc* d = g_be.getActive();
+            if (!d) {
+                ClassicMessage(hwnd, "Delete", "No active document.");
+            } else if (MessageBoxA(hwnd, ("Delete \"" + d->title + "\"?").c_str(),
+                                   "Delete", MB_YESNO | MB_ICONWARNING) == IDYES) {
+                g_be.remove(d->id);
+                ClassicMessage(hwnd, "Delete", "Document removed from mid-end.");
+            }
+            RefreshStatus();
+            break;
+        }
+        case CM_TESTCLUBS:
+            ClassicMessage(hwnd, "Test Clubs",
+                "Club permissions stub.\n"
+                "Private / Club / Public levels are stored on each document.");
             break;
         case CM_EDITUNDO: case CM_EDITCUT: case CM_EDITCOPY:
         case CM_EDITPASTE: case CM_EDITDELETE:
+            ClassicMessage(hwnd, "Edit", "Use the document window edit control (Ctrl+X/C/V).");
+            break;
         case CM_INSERTFILE: case CM_COPYTOFILE:
+            ClassicMessage(hwnd, "Edit", "File insert/export not implemented in stub.");
+            break;
         case CM_EDITFIND: case CM_EDITREPLACE: case CM_EDITFINDNEXT:
-            ClassicMessage(hwnd, "Edit", "Standard edit command (menu fidelity).");
+            ClassicMessage(hwnd, "Edit", "Find/Replace: not implemented in stub.");
             break;
         case CM_CASCADECHILDREN:
             CascadeChildren();
