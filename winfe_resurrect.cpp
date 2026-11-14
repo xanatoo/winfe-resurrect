@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <sstream>
 
@@ -364,6 +365,89 @@ struct Backend {
         }
         if (pendingLinkFrom) os << "  |  link-start set";
         return os.str();
+    }
+
+    // Simple text snapshot (not a real FeBe dump)
+    bool exportToFile(const char* path) const {
+        FILE* f = fopen(path, "wb");
+        if (!f) return false;
+        fprintf(f, "WINFE-STUB-1\n");
+        fprintf(f, "host=%s\nuser=%s\nactive=%d\nnextDoc=%d\nnextLink=%d\n",
+            host.c_str(), user.c_str(), activeDoc, nextDocId, nextLinkId);
+        fprintf(f, "DOCS %d\n", (int)docs.size());
+        for (auto& kv : docs) {
+            const StubDoc& d = kv.second;
+            fprintf(f, "DOC %d\n", d.id);
+            fprintf(f, "title=%s\n", d.title.c_str());
+            fprintf(f, "owner=%s\n", d.owner.c_str());
+            fprintf(f, "variant=%d\nread=%d\nedit=%d\nhist=%d\n",
+                d.variant, d.readPerm, d.editPerm, d.history);
+            fprintf(f, "CONTENT %d\n", (int)d.content.size());
+            fwrite(d.content.data(), 1, d.content.size(), f);
+            fprintf(f, "\nENDCONTENT\n");
+        }
+        fprintf(f, "LINKS %d\n", (int)links.size());
+        for (auto& L : links) {
+            fprintf(f, "LINK %d\nfrom=%d\nto=%d\ntitle=%s\nowner=%s\n",
+                L.id, L.fromDoc, L.toDoc, L.title.c_str(), L.owner.c_str());
+        }
+        fclose(f);
+        return true;
+    }
+
+    bool importFromFile(const char* path) {
+        FILE* f = fopen(path, "rb");
+        if (!f) return false;
+        char line[1024];
+        if (!fgets(line, sizeof(line), f) || strncmp(line, "WINFE-STUB-1", 12) != 0) {
+            fclose(f);
+            return false;
+        }
+        docs.clear();
+        links.clear();
+        pendingLinkFrom = 0;
+        while (fgets(line, sizeof(line), f)) {
+            if (strncmp(line, "host=", 5) == 0) { host = line + 5; while (!host.empty() && (host.back()=='\n'||host.back()=='\r')) host.pop_back(); }
+            else if (strncmp(line, "user=", 5) == 0) { user = line + 5; while (!user.empty() && (user.back()=='\n'||user.back()=='\r')) user.pop_back(); }
+            else if (strncmp(line, "active=", 7) == 0) activeDoc = atoi(line + 7);
+            else if (strncmp(line, "nextDoc=", 8) == 0) nextDocId = atoi(line + 8);
+            else if (strncmp(line, "nextLink=", 9) == 0) nextLinkId = atoi(line + 9);
+            else if (strncmp(line, "DOC ", 4) == 0) {
+                StubDoc d;
+                d.id = atoi(line + 4);
+                while (fgets(line, sizeof(line), f)) {
+                    if (strncmp(line, "title=", 6) == 0) { d.title = line + 6; while (!d.title.empty() && (d.title.back()=='\n'||d.title.back()=='\r')) d.title.pop_back(); }
+                    else if (strncmp(line, "owner=", 6) == 0) { d.owner = line + 6; while (!d.owner.empty() && (d.owner.back()=='\n'||d.owner.back()=='\r')) d.owner.pop_back(); }
+                    else if (strncmp(line, "variant=", 8) == 0) d.variant = atoi(line + 8);
+                    else if (strncmp(line, "read=", 5) == 0) d.readPerm = atoi(line + 5);
+                    else if (strncmp(line, "edit=", 5) == 0) d.editPerm = atoi(line + 5);
+                    else if (strncmp(line, "hist=", 5) == 0) d.history = atoi(line + 5);
+                    else if (strncmp(line, "CONTENT ", 8) == 0) {
+                        int n = atoi(line + 8);
+                        d.content.resize(n);
+                        if (n > 0) fread(&d.content[0], 1, n, f);
+                        fgets(line, sizeof(line), f); // trailing newline after content
+                        fgets(line, sizeof(line), f); // ENDCONTENT
+                        break;
+                    }
+                }
+                docs[d.id] = d;
+            } else if (strncmp(line, "LINK ", 5) == 0) {
+                StubLink L;
+                L.id = atoi(line + 5);
+                while (fgets(line, sizeof(line), f)) {
+                    if (strncmp(line, "from=", 5) == 0) L.fromDoc = atoi(line + 5);
+                    else if (strncmp(line, "to=", 3) == 0) L.toDoc = atoi(line + 3);
+                    else if (strncmp(line, "title=", 6) == 0) { L.title = line + 6; while (!L.title.empty() && (L.title.back()=='\n'||L.title.back()=='\r')) L.title.pop_back(); }
+                    else if (strncmp(line, "owner=", 6) == 0) { L.owner = line + 6; while (!L.owner.empty() && (L.owner.back()=='\n'||L.owner.back()=='\r')) L.owner.pop_back(); break; }
+                    else break;
+                }
+                links.push_back(L);
+            }
+        }
+        fclose(f);
+        connected = true;
+        return true;
     }
 };
 
@@ -1444,6 +1528,8 @@ HMENU BuildMainMenu() {
     AppendMenuA(hDoc, MF_STRING, CM_DELETE,      "D&elete");
     AppendMenuA(hDoc, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(hDoc, MF_STRING, CM_SAVE,        "Save All");
+    AppendMenuA(hDoc, MF_STRING, 254,            "E&xport mid-end snapshot...");
+    AppendMenuA(hDoc, MF_STRING, 255,            "I&mport mid-end snapshot...");
     AppendMenuA(hDoc, MF_STRING, CM_RETURNHOME,  "Return &Home");
     AppendMenuA(hDoc, MF_STRING, 250,            "Document &Browser...");
     AppendMenuA(hDoc, MF_STRING, CM_INITIALIZE,  "Initiali&ze");
@@ -1785,6 +1871,32 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             sprintf(buf, "Saved %d document(s) in mid-end memory.", n);
             ClassicMessage(hwnd, "Save All", buf);
             RefreshStatus();
+            break;
+        }
+        case 254: {
+            for (auto& kv : g_docHwnd)
+                if (IsWindow(kv.first)) SyncDocFromWindow(kv.first);
+            const char* path = "winfe-midend.stub";
+            if (g_be.exportToFile(path)) {
+                char buf[256];
+                sprintf(buf, "Exported mid-end snapshot to:\n%s", path);
+                ClassicMessage(hwnd, "Export", buf);
+            } else {
+                ClassicMessage(hwnd, "Export", "Failed to write snapshot file.");
+            }
+            break;
+        }
+        case 255: {
+            const char* path = "winfe-midend.stub";
+            if (g_be.importFromFile(path)) {
+                g_docHwnd.clear();
+                CloseAllChildren();
+                CreateFormWindow("Desktop", 0);
+                ClassicMessage(hwnd, "Import", "Mid-end snapshot loaded.\nOpen windows were closed.");
+                RefreshStatus();
+            } else {
+                ClassicMessage(hwnd, "Import", "Failed to read winfe-midend.stub");
+            }
             break;
         }
         case CM_DELETE: {
