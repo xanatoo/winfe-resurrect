@@ -450,11 +450,14 @@ HWND CreateFormWindow(const char* title, int type) {
     RegisterClassA(&wc);
 
     int w = 380, h = 300;
-    if (type == 0) { w = 420; h = 160; }      // Desktop
-    if (type == 1) { w = 560; h = 520; }      // Memo (Memorandum)
-    if (type == 2) { w = 600; h = 560; }      // Rate (Rating Instructions)
+    if (type == 0) { w = 480; h = 200; }      // Desktop
+    if (type == 1) { w = 560; h = 520; }      // Memo
+    if (type == 2) { w = 600; h = 560; }      // Rate
     if (type == 3) { w = 620; h = 580; }      // Akord
     if (type == 4) { w = 520; h = 560; }      // Underwriters Manual
+    if (type == 5) { w = 420; h = 160; }      // Attention
+    if (type == 6) { w = 400; h = 140; }      // Reference Area (Tabs)
+    if (type == 7) { w = 560; h = 580; }      // Contractual Profile
 
     HWND hwnd = CreateWindowExA(
         WS_EX_CLIENTEDGE,
@@ -469,23 +472,35 @@ HWND CreateFormWindow(const char* title, int type) {
 
 // Extra form IDs for Desktop launch buttons
 enum {
-    FI_HOME_UM = 104
+    FI_HOME_UM   = 104,
+    FI_HOME_TABS = 105,
+    FI_HOME_ATTN = 106,
+    FI_HOME_CPROF= 107
 };
 
 void BuildHomeForm(HWND hwnd) {
-    // Expanded desktop launcher (original had Akord / Rate / Memo)
+    // Expanded desktop launcher
     CreateWindowA("BUTTON", "Akord form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 20, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
+        16, 16, 110, 28, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Rate form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        130, 20, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
+        140, 16, 110, 28, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Memo 1",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        244, 20, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
+        264, 16, 110, 28, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Underwriters Manual",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        16, 60, 160, 28, hwnd, (HMENU)(intptr_t)FI_HOME_UM, g_hInst, nullptr);
+        16, 56, 160, 28, hwnd, (HMENU)(intptr_t)FI_HOME_UM, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Reference Area",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        190, 56, 130, 28, hwnd, (HMENU)(intptr_t)FI_HOME_TABS, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Attention",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        330, 56, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_ATTN, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Contractual Profile",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        16, 96, 160, 28, hwnd, (HMENU)(intptr_t)FI_HOME_CPROF, g_hInst, nullptr);
     ApplyClassicFontToChildren(hwnd);
 }
 
@@ -661,6 +676,107 @@ void BuildUmForm(HWND hwnd) {
     ApplyClassicFontToChildren(hwnd);
 }
 
+void BuildAttnForm(HWND hwnd) {
+    // Historical "Attention" from pcaide/attn.pvt
+    CreateWindowA("EDIT",
+        "New submission received for Unlucky Markets — CGL package.\r\n"
+        "Please review before the 3pm underwriting desk.",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_TABSTOP,
+        16, 12, 380, 60, hwnd, (HMENU)(intptr_t)3, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Read Now",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        200, 90, 90, 28, hwnd, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Later...",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        300, 90, 90, 28, hwnd, (HMENU)IDCANCEL, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hwnd);
+}
+
+void BuildTabsForm(HWND hwnd) {
+    // Historical "Reference Area" from pcaide/tabs.pvt — launcher for related forms
+    CreateWindowA("BUTTON", "Rating Instructions",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        20, 20, 160, 28, hwnd, (HMENU)(intptr_t)1, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Underwriters Manual",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        200, 20, 170, 28, hwnd, (HMENU)(intptr_t)2, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Akord Application",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        20, 60, 160, 28, hwnd, (HMENU)(intptr_t)3, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Contractual Profile",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        200, 60, 170, 28, hwnd, (HMENU)(intptr_t)4, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hwnd);
+}
+
+void BuildCprofForm(HWND hwnd) {
+    // Historical "Contractual Profile" from pcaide/cprof.pvt (simplified grid)
+    auto lab = [&](const char* t, int x, int y, int w = 100) {
+        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_LEFT,
+            x, y, w, 14, hwnd, nullptr, g_hInst, nullptr);
+    };
+    auto ed = [&](int id, int x, int y, int w, int h, const char* text = "") {
+        CreateWindowA("EDIT", text,
+            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | WS_TABSTOP | ES_AUTOHSCROLL,
+            x, y, w, h, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+    };
+
+    lab("ACME", 12, 8, 50);
+    lab("Commercial Casualty", 70, 8, 140);
+    lab("Volume I", 360, 8, 60);
+    lab("MANUAL", 300, 28, 50);
+    lab("PROCEDURE", 360, 28, 70);
+    lab("PAGE", 450, 28, 40);
+    ed(12, 300, 46, 40, 20, "AB14");
+    ed(13, 360, 46, 60, 20, "3220");
+    ed(14, 450, 46, 40, 20, "Ex1.2");
+    lab("DATE", 360, 72, 40);
+    ed(15, 400, 70, 80, 20, "10 Feb 93");
+    lab("REV", 490, 72, 30);
+    ed(16, 520, 70, 30, 20, "00");
+
+    lab("PRODUCER", 12, 72, 70);
+    ed(3, 12, 90, 160, 40, "Willy Loman");
+    lab("APPLICANT", 12, 140, 70);
+    ed(2, 12, 158, 280, 30, "Unlucky Markets");
+
+    lab("CONTRACTUAL PROFILE", 12, 200, 200);
+    lab("A. Exposure Prospector - Where May Hold Harmless be Present", 12, 220, 400);
+
+    // Severity headers
+    const char* sev[] = { "Mild", "Mod", "Avg", "Sev", "Extr" };
+    for (int i = 0; i < 5; ++i)
+        lab(sev[i], 300 + i * 44, 240, 40);
+
+    const char* items[] = {
+        "1. Freight Handlers Agreements",
+        "2. Agreements Required by Municipal Ordinance",
+        "3. Cartage Agreements",
+        "4. Construction Agreements",
+        "5. Easement Agreements (Streets or Sidewalk)",
+        "6. Railroad Agreements - Crossings, Rights-of-way"
+    };
+    for (int r = 0; r < 6; ++r) {
+        int y = 260 + r * 28;
+        lab(items[r], 20, y, 270);
+        for (int c = 0; c < 5; ++c) {
+            CreateWindowA("BUTTON", "",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
+                310 + c * 44, y, 20, 18,
+                hwnd, (HMENU)(intptr_t)(100 + r * 5 + c), g_hInst, nullptr);
+        }
+    }
+
+    CreateWindowA("BUTTON", "Set Aside",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        340, 500, 90, 28, hwnd, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Done",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        440, 500, 90, 28, hwnd, (HMENU)IDCANCEL, g_hInst, nullptr);
+
+    ApplyClassicFontToChildren(hwnd);
+}
+
 void BuildAkordForm(HWND hwnd) {
     // Full historical "AKORD General Liability Section" from pcaide/akord.pvt
     // Dialog units scaled ~2x for modern readability while preserving layout density.
@@ -788,6 +904,9 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 2: BuildRateForm(hwnd); break;
         case 3: BuildAkordForm(hwnd); break;
         case 4: BuildUmForm(hwnd); break;
+        case 5: BuildAttnForm(hwnd); break;
+        case 6: BuildTabsForm(hwnd); break;
+        case 7: BuildCprofForm(hwnd); break;
         }
         return 0;
     }
@@ -798,6 +917,16 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             if (id == FI_HOME_RATE)  CreateFormWindow("Rating Instructions", 2);
             if (id == FI_HOME_MEMO1) CreateFormWindow("Memorandum", 1);
             if (id == FI_HOME_UM)    CreateFormWindow("Underwriters Manual", 4);
+            if (id == FI_HOME_ATTN)  CreateFormWindow("Attention", 5);
+            if (id == FI_HOME_TABS)  CreateFormWindow("Reference Area", 6);
+            if (id == FI_HOME_CPROF) CreateFormWindow("Contractual Profile", 7);
+        }
+        // Reference Area buttons open other forms
+        if (type == 6) {
+            if (id == 1) CreateFormWindow("Rating Instructions", 2);
+            if (id == 2) CreateFormWindow("Underwriters Manual", 4);
+            if (id == 3) CreateFormWindow("AKORD General Liability Section", 3);
+            if (id == 4) CreateFormWindow("Contractual Profile", 7);
         }
         if (id == FI_MEMO_REFERENCE) {
             ShowLinkInfoDialog(hwnd);
@@ -873,7 +1002,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CREATE: {
         g_hFont = CreateClassicFont(-12, false);
         g_hStatus = CreateWindowA("STATIC",
-            " Udanax Gold Frontend  —  1993 visual resurrection (step 6)  |  Memo / Rate / UM from original .pvt",
+            " Udanax Gold Frontend  —  1993 visual resurrection (step 7)  |  Attn / Tabs / CProf + accelerators",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)ID_MAIN_STATUS, g_hInst, nullptr);
         SetClassicFont(g_hStatus);
@@ -973,10 +1102,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     ShowWindow(g_hMain, nCmdShow);
     UpdateWindow(g_hMain);
 
+    // Accelerators matching original fe.rc COMMANDS_ACC
+    ACCEL accels[] = {
+        { FVIRTKEY | FCONTROL, 'X', CM_EDITCUT },
+        { FVIRTKEY | FCONTROL, 'C', CM_EDITCOPY },
+        { FVIRTKEY | FCONTROL, 'V', CM_EDITPASTE },
+        { FVIRTKEY,            VK_DELETE, CM_EDITDELETE },
+        { FVIRTKEY | FCONTROL, VK_DELETE, CM_EDITCLEAR },
+        { FVIRTKEY | FCONTROL, 'Z', CM_EDITUNDO },
+        { FVIRTKEY | FCONTROL, 'F', CM_EDITFIND },
+        { FVIRTKEY | FCONTROL, 'G', CM_EDITFINDNEXT },
+        { FVIRTKEY | FCONTROL, 'R', CM_EDITREPLACE },
+    };
+    HACCEL hAccel = CreateAcceleratorTableA(accels, (int)(sizeof(accels) / sizeof(accels[0])));
+
     MSG msg;
     while (GetMessageA(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageA(&msg);
+        if (!TranslateAcceleratorA(g_hMain, hAccel, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
     }
+    if (hAccel) DestroyAcceleratorTable(hAccel);
     return (int)msg.wParam;
 }
