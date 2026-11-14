@@ -707,19 +707,19 @@ enum {
 };
 
 void BuildHomeForm(HWND hwnd) {
-    auto btn = [&](const char* label, int id, int x, int y, int w, int h) {
-        HWND h = CreateWindowA("BUTTON", label,
+    auto btn = [&](const char* label, int id, int x, int y, int bw, int bh) {
+        HWND ctl = CreateWindowA("BUTTON", label,
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-            x, y, w, h, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
-        if (h) ShowWindow(h, SW_SHOW);
-        return h;
+            x, y, bw, bh, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+        if (ctl) ShowWindow(ctl, SW_SHOW);
+        return ctl;
     };
-    auto lab = [&](const char* t, int x, int y, int w) {
-        HWND h = CreateWindowA("STATIC", t,
+    auto lab = [&](const char* t, int x, int y, int bw) {
+        HWND ctl = CreateWindowA("STATIC", t,
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            x, y, w, 16, hwnd, nullptr, g_hInst, nullptr);
-        if (h) ShowWindow(h, SW_SHOW);
-        return h;
+            x, y, bw, 16, hwnd, nullptr, g_hInst, nullptr);
+        if (ctl) ShowWindow(ctl, SW_SHOW);
+        return ctl;
     };
 
     lab("Desktop — forms and mid-end documents", 12, 8, 400);
@@ -1210,7 +1210,7 @@ void BuildDocForm(HWND hwnd) {
     CreateWindowA("STATIC", meta.c_str(),
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         8, 24, 480, 16, hwnd, nullptr, g_hInst, nullptr);
-    HWND hEdit = CreateWindowA("EDIT", d ? d->content.c_str() : "",
+    CreateWindowA("EDIT", d ? d->content.c_str() : "",
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_TABSTOP,
         8, 48, 490, 300, hwnd, (HMENU)(intptr_t)9001, g_hInst, nullptr);
