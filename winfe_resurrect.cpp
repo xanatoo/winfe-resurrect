@@ -403,7 +403,7 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 0) { w = 340; h = 120; }      // Desktop
     if (type == 1) { w = 400; h = 340; }      // Memo
     if (type == 2) { w = 400; h = 320; }      // Rate
-    if (type == 3) { w = 360; h = 260; }      // Akord
+    if (type == 3) { w = 620; h = 580; }      // Akord (full historical form)
 
     HWND hwnd = CreateWindowExA(
         WS_EX_CLIENTEDGE,
@@ -491,25 +491,114 @@ void BuildRateForm(HWND hwnd) {
 }
 
 void BuildAkordForm(HWND hwnd) {
-    // FDLG_AKORD (original was simple; full pcaide version was much larger)
-    CreateWindowA("BUTTON", "Comprehensive gen'l.",
-        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
-        40, 40, 220, 22, hwnd, (HMENU)(intptr_t)FI_AKORD_CGL, g_hInst, nullptr);
-    CreateWindowA("BUTTON", "Care, custody, coll.",
-        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
-        40, 70, 220, 22, hwnd, (HMENU)(intptr_t)FI_AKORD_CCC, g_hInst, nullptr);
+    // Full historical "AKORD General Liability Section" from pcaide/akord.pvt
+    // Dialog units scaled ~2x for modern readability while preserving layout density.
 
-    CreateWindowA("STATIC", "(Note: NYI)",
-        WS_CHILD | WS_VISIBLE | SS_CENTER,
-        40, 120, 220, 18, hwnd, nullptr, g_hInst, nullptr);
+    auto lab = [&](const char* t, int x, int y, int w = 80) {
+        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_LEFT,
+            x, y, w, 14, hwnd, nullptr, g_hInst, nullptr);
+    };
+    auto ed = [&](int id, int x, int y, int w, int h, const char* text = "") {
+        DWORD st = WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP | ES_LEFT;
+        if (h > 20) st |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
+        HWND hWnd = CreateWindowA("EDIT", text, st, x, y, w, h,
+            hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+        return hWnd;
+    };
+    auto chk = [&](int id, const char* t, int x, int y, int w) {
+        CreateWindowA("BUTTON", t,
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
+            x, y, w, 16, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+    };
 
-    CreateWindowA("STATIC",
-        "Original FDLG_AKORD from fe.rc.\r\n"
-        "The full pcaide Akord form contained\r\n"
-        "dozens of additional fields generated\r\n"
-        "by Borland Resource Workshop / PVDialog.",
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        30, 155, 290, 70, hwnd, nullptr, g_hInst, nullptr);
+    // Header
+    lab("GENERAL LIABILITY SECTION", 100, 6, 200);
+    lab("DATE", 460, 8, 40);
+    ed(1, 500, 6, 90, 18, "1/30/93");
+
+    // Producer / Applicant block
+    lab("PRODUCER", 8, 32, 70);
+    ed(3, 8, 48, 170, 70, "Willy Loman");
+
+    lab("APPLICANT", 190, 32, 70);
+    ed(2, 190, 48, 280, 50, "Unlucky Markets");
+
+    // Policy period / billing
+    lab("PROP EFF", 190, 108, 60);
+    ed(4, 250, 106, 70, 18, "4/1/93");
+    lab("PROP EXP", 330, 108, 60);
+    ed(5, 390, 106, 70, 18, "4/1/94");
+
+    lab("BILLING", 470, 90, 50);
+    chk(6, "AGENCY", 470, 106, 70);
+    chk(7, "DIRECT", 470, 122, 70);
+    lab("PAYMENT", 540, 90, 50);
+    ed(8, 540, 106, 50, 18, "TBD");
+    lab("AUDIT", 540, 128, 40);
+    ed(9, 540, 144, 30, 18, "Y");
+
+    // Coverages
+    lab("COVERAGES / LIMITS", 8, 160, 140);
+    lab("LIMITS OF LIABILITY", 300, 160, 140);
+    lab("(000)", 480, 160, 40);
+
+    chk(15, "COMPREHENSIVE GENERAL LIABILITY", 8, 180, 240);
+    chk(16, "OWNERS, LANDLORDS, && TENANTS", 8, 198, 240);
+    chk(10, "MANUFACTURER'S && CONTRACTORS", 8, 216, 240);
+    chk(11, "STOREKEEPERS LIABILITY", 8, 234, 240);
+    chk(12, "OWNER'S && CONTRACTORS PROTECTIVE", 8, 252, 240);
+    chk(17, "CONTRACTUAL", 8, 270, 100);
+    chk(18, "BLANKET", 110, 270, 80);
+    chk(13, "DESIG.", 200, 270, 60);
+    chk(14, "PRODUCTS/COMPLETED OPERATIONS", 8, 288, 240);
+
+    // Options / endorsements
+    lab("OPTIONS", 8, 320, 80);
+    chk(24, "BROAD FORM PROPERTY DAMAGE", 8, 338, 240);
+    chk(22, "EXCLUDE COMPL. OPS", 8, 356, 160);
+    chk(19, "BROAD FORM CGL ENDORSEMENT", 8, 374, 240);
+    chk(20, "XC", 8, 392, 40);
+    chk(51, "DELETE EXCLUSION C", 60, 392, 160);
+    chk(21, "FIRE LEGAL LIABILITY (Give Loc's && Lim's)", 8, 410, 280);
+    chk(25, "ELEVATOR COLLISION", 8, 428, 180);
+    chk(23, "NON-OWNED AUTO (Give Terr's && Emp's)", 8, 446, 260);
+
+    // Limits / money fields (right column)
+    lab("COVERAGE", 300, 180, 80);
+    lab("COMB SING LIM", 300, 200, 100);
+    ed(40, 410, 198, 60, 18, "");
+    lab("P.D. DEDUCT.", 300, 230, 90);
+    ed(45, 410, 228, 60, 18, "$");
+    lab("PARTIC. %", 300, 258, 80);
+    ed(50, 410, 256, 50, 18, "");
+    lab("TOTAL", 300, 290, 50);
+    ed(46, 410, 288, 60, 18, "$");
+
+    // Care/custody note (matches original sample text)
+    lab("Care, custody, and control / Broad form liability", 300, 330, 280);
+    ed(52, 300, 348, 280, 60,
+        "Care, custody, and control / Broad form liability");
+
+    // Class letters
+    chk(48, "A", 300, 420, 30);
+    chk(49, "B", 340, 420, 30);
+    chk(47, "C", 380, 420, 30);
+
+    // Action buttons (historical labels)
+    CreateWindowA("BUTTON", "Set Aside",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        380, 500, 90, 28, hwnd, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Done",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        480, 500, 90, 28, hwnd, (HMENU)IDCANCEL, g_hInst, nullptr);
+
+    // Pre-check the historically checked boxes from SetupWindow()
+    // (PTCheck15, 11, 17, 18, 14 were checked in the original)
+    CheckDlgButton(hwnd, 15, BST_CHECKED); // COMPREHENSIVE GENERAL LIABILITY
+    CheckDlgButton(hwnd, 11, BST_CHECKED); // STOREKEEPERS LIABILITY
+    CheckDlgButton(hwnd, 17, BST_CHECKED); // CONTRACTUAL
+    CheckDlgButton(hwnd, 18, BST_CHECKED); // BLANKET
+    CheckDlgButton(hwnd, 14, BST_CHECKED); // PRODUCTS/COMPLETED OPERATIONS
 
     ApplyClassicFontToChildren(hwnd);
 }
@@ -533,7 +622,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_COMMAND: {
         int id = LOWORD(wParam);
         if (type == 0) {
-            if (id == FI_HOME_AKORD) CreateFormWindow("Akord form", 3);
+            if (id == FI_HOME_AKORD) CreateFormWindow("AKORD General Liability Section", 3);
             if (id == FI_HOME_RATE)  CreateFormWindow("ACME Rate Request", 2);
             if (id == FI_HOME_MEMO1) CreateFormWindow("Memo", 1);
         }
@@ -608,7 +697,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CREATE: {
         g_hFont = CreateClassicFont(-12, false);
         g_hStatus = CreateWindowA("STATIC",
-            " Udanax Gold Frontend  —  1993 visual resurrection (step 2)  |  No backend",
+            " Udanax Gold Frontend  —  1993 visual resurrection (step 3)  |  Full Akord form from akord.pvt",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)ID_MAIN_STATUS, g_hInst, nullptr);
         SetClassicFont(g_hStatus);
