@@ -589,7 +589,6 @@ int ShowDocInfoDialog(HWND parent) {
         WS_CHILD | WS_VISIBLE,
         70, 50, 200, 16, hDlg, (HMENU)(intptr_t)ID_OWNER, g_hInst, nullptr);
 
-    // Separator-like line
     CreateWindowA("STATIC", "", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
         20, 80, 390, 2, hDlg, nullptr, g_hInst, nullptr);
 
@@ -615,18 +614,18 @@ int ShowDocInfoDialog(HWND parent) {
         SendMessageA(hEdit, CB_ADDSTRING, 0, (LPARAM)p);
     }
     for (auto h : hist) SendMessageA(hHist, CB_ADDSTRING, 0, (LPARAM)h);
-    SendMessageA(hRead, CB_SETCURSEL, 0, 0);
-    SendMessageA(hEdit, CB_SETCURSEL, 0, 0);
-    SendMessageA(hHist, CB_SETCURSEL, 0, 0);
+    SendMessageA(hRead, CB_SETCURSEL, d ? d->readPerm : 0, 0);
+    SendMessageA(hEdit, CB_SETCURSEL, d ? d->editPerm : 0, 0);
+    SendMessageA(hHist, CB_SETCURSEL, d ? d->history : 0, 0);
 
     CreateWindowA("STATIC", "", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
         20, 210, 390, 2, hDlg, nullptr, g_hInst, nullptr);
 
     label("Last revision by:", 12, 230);
-    CreateWindowA("STATIC", "Ravi Pandya",
+    CreateWindowA("STATIC", d ? d->lastRevBy.c_str() : "",
         WS_CHILD | WS_VISIBLE, 140, 230, 150, 16, hDlg, (HMENU)(intptr_t)ID_LASTREVISIONBY, g_hInst, nullptr);
     label("Current editor:", 12, 256);
-    CreateWindowA("STATIC", "(none)",
+    CreateWindowA("STATIC", d ? d->currentEditor.c_str() : "",
         WS_CHILD | WS_VISIBLE, 140, 256, 150, 16, hDlg, (HMENU)(intptr_t)ID_CURRENTEDITOR, g_hInst, nullptr);
 
     CreateWindowA("BUTTON", "&OK",
@@ -639,8 +638,49 @@ int ShowDocInfoDialog(HWND parent) {
     ApplyClassicFontToChildren(hDlg);
     SetClassicFont(hDlg);
 
-    ModalResult res;
-    return RunModalLoop(hDlg, &res);
+    EnableWindow(parent, FALSE);
+    ShowWindow(hDlg, SW_SHOW);
+    MSG msg;
+    int code = IDCANCEL;
+    char titleBuf[256] = {};
+    int readPerm = d ? d->readPerm : 0;
+    int editPerm = d ? d->editPerm : 0;
+    int history  = d ? d->history : 0;
+    while (IsWindow(hDlg) && GetMessageA(&msg, nullptr, 0, 0)) {
+        if (msg.message == WM_COMMAND) {
+            int cid = LOWORD(msg.wParam);
+            if (cid == IDOK) {
+                GetDlgItemTextA(hDlg, ID_TITLE, titleBuf, sizeof(titleBuf));
+                readPerm = (int)SendMessageA(hRead, CB_GETCURSEL, 0, 0);
+                editPerm = (int)SendMessageA(hEdit, CB_GETCURSEL, 0, 0);
+                history  = (int)SendMessageA(hHist, CB_GETCURSEL, 0, 0);
+                code = IDOK;
+                DestroyWindow(hDlg);
+                break;
+            }
+            if (cid == IDCANCEL) {
+                code = IDCANCEL;
+                DestroyWindow(hDlg);
+                break;
+            }
+        }
+        if (!IsDialogMessageA(hDlg, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+    }
+    EnableWindow(parent, TRUE);
+    SetActiveWindow(parent);
+    if (code == IDOK && d) {
+        if (titleBuf[0]) d->title = titleBuf;
+        if (readPerm >= 0) d->readPerm = readPerm;
+        if (editPerm >= 0) d->editPerm = editPerm;
+        if (history >= 0)  d->history = history;
+        d->lastRevBy = g_be.user;
+        d->dirty = true;
+        RefreshStatus();
+    }
+    return code;
 }
 
 // ---------------------------------------------------------------------------
