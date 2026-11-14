@@ -198,6 +198,8 @@ struct Backend {
     int nextLinkId = 1;
     int activeDoc  = 0;
     int pendingLinkFrom = 0; // for Start Link / End Link
+    std::string lastFind;
+    size_t lastFindPos = 0;
     std::map<int, StubDoc> docs;
     std::vector<StubLink> links;
 
@@ -673,6 +675,7 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 7) { w = 560; h = 580; }      // Contractual Profile
     if (type == 8) { w = 520; h = 400; }      // Document content (stub)
     if (type == 9) { w = 420; h = 320; }      // Document browser
+    if (type == 10) { w = 420; h = 320; }     // Link browser
 
     HWND hwnd = CreateMDIWindowA(
         "WinFEMdiChild",
@@ -1157,6 +1160,35 @@ void BuildDocBrowser(HWND hwnd) {
     ApplyClassicFontToChildren(hwnd);
 }
 
+
+void BuildLinkBrowser(HWND hwnd) {
+    g_be.seed();
+    CreateWindowA("STATIC", "Links in mid-end",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        12, 10, 300, 16, hwnd, nullptr, g_hInst, nullptr);
+    HWND hList = CreateWindowA("LISTBOX", "",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY | WS_TABSTOP,
+        12, 32, 380, 200, hwnd, (HMENU)(intptr_t)9200, g_hInst, nullptr);
+    for (size_t i = 0; i < g_be.links.size(); ++i) {
+        auto& L = g_be.links[i];
+        std::string line = "#" + std::to_string(L.id) + "  " + L.title;
+        int idx = (int)SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)line.c_str());
+        SendMessageA(hList, LB_SETITEMDATA, idx, (LPARAM)i);
+    }
+    if (g_be.links.empty())
+        SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)"(no links — use Start Link / End Link)");
+    CreateWindowA("BUTTON", "Info...",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        12, 250, 90, 28, hwnd, (HMENU)(intptr_t)9201, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Open From",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        115, 250, 90, 28, hwnd, (HMENU)(intptr_t)9202, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Open To",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        218, 250, 90, 28, hwnd, (HMENU)(intptr_t)9203, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hwnd);
+}
+
 void BuildDocForm(HWND hwnd) {
     g_be.seed();
     StubDoc* d = g_be.getActive();
@@ -1201,6 +1233,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 7: BuildCprofForm(hwnd); break;
         case 8: BuildDocForm(hwnd); break;
         case 9: BuildDocBrowser(hwnd); break;
+        case 10: BuildLinkBrowser(hwnd); break;
         }
         return 0;
     }
@@ -1249,6 +1282,29 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             } else if (id == 9103 && docId) {
                 g_be.activeDoc = docId;
                 ShowDocInfoDialog(hwnd);
+            }
+        }
+        if (type == 10) {
+            HWND hList = GetDlgItem(hwnd, 9200);
+            int sel = (int)SendMessageA(hList, LB_GETCURSEL, 0, 0);
+            int idx = (sel >= 0) ? (int)SendMessageA(hList, LB_GETITEMDATA, sel, 0) : -1;
+            if (idx >= 0 && idx < (int)g_be.links.size()) {
+                StubLink& L = g_be.links[idx];
+                if (id == 9201 || (id == 9200 && HIWORD(wParam) == LBN_DBLCLK)) {
+                    ShowLinkInfoDialog(hwnd);
+                } else if (id == 9202) {
+                    g_be.activeDoc = L.fromDoc;
+                    g_be.grab(L.fromDoc);
+                    StubDoc* d = g_be.get(L.fromDoc);
+                    CreateFormWindow(d ? d->title.c_str() : "Document", 8);
+                    RefreshStatus();
+                } else if (id == 9203) {
+                    g_be.activeDoc = L.toDoc;
+                    g_be.grab(L.toDoc);
+                    StubDoc* d = g_be.get(L.toDoc);
+                    CreateFormWindow(d ? d->title.c_str() : "Document", 8);
+                    RefreshStatus();
+                }
             }
         }
         // Reference Area buttons open other forms
@@ -1301,12 +1357,15 @@ HMENU BuildMainMenu() {
     AppendMenuA(hDoc, MF_STRING, CM_GRAB,        "&Grab");
     AppendMenuA(hDoc, MF_STRING, CM_RELEASE,     "&Release");
     AppendMenuA(hDoc, MF_STRING, CM_NEWVARIANT,  "&New variant");
+    AppendMenuA(hDoc, MF_STRING, 251,            "N&ew document");
     AppendMenuA(hDoc, MF_SEPARATOR, 0, nullptr);
     AppendMenuA(hDoc, MF_STRING, CM_INFO,        "&Info");
     AppendMenuA(hLinks, MF_STRING, CM_LINKS,     "&Links");
     AppendMenuA(hLinks, MF_STRING, CM_STARTLINK, "&Start Link");
     AppendMenuA(hLinks, MF_STRING, CM_ENDLINK,   "End &Link");
     AppendMenuA(hLinks, MF_STRING, CM_ATTACHMENT,"&Attachment");
+    AppendMenuA(hLinks, MF_SEPARATOR, 0, nullptr);
+    AppendMenuA(hLinks, MF_STRING, 252,          "Link &Browser...");
     AppendMenuA(hDoc, MF_POPUP, (UINT_PTR)hLinks, "&Links");
     AppendMenuA(hDoc, MF_STRING, CM_DELETE,      "D&elete");
     AppendMenuA(hDoc, MF_SEPARATOR, 0, nullptr);
@@ -1337,10 +1396,88 @@ HMENU BuildMainMenu() {
     AppendMenuA(hWin, MF_STRING, CM_ARRANGEICONS,    "Arrange &Icons");
     AppendMenuA(hWin, MF_STRING, CM_CLOSECHILDREN,   "C&lose All");
 
+    HMENU hHelp = CreatePopupMenu();
+    AppendMenuA(hHelp, MF_STRING, 253, "&About winfe resurrection...");
+
     AppendMenuA(hMenu, MF_POPUP, (UINT_PTR)hDoc,  "&Document");
     AppendMenuA(hMenu, MF_POPUP, (UINT_PTR)hEdit, "&Edit");
     AppendMenuA(hMenu, MF_POPUP, (UINT_PTR)hWin,  "&Window");
+    AppendMenuA(hMenu, MF_POPUP, (UINT_PTR)hHelp, "&Help");
     return hMenu;
+}
+
+
+// Simple find in active document content (stub)
+bool FindInActiveDoc(bool again) {
+    StubDoc* d = g_be.getActive();
+    if (!d || g_be.lastFind.empty()) return false;
+    const std::string& hay = d->content;
+    size_t start = again ? (g_be.lastFindPos + 1) : 0;
+    size_t pos = hay.find(g_be.lastFind, start);
+    if (pos == std::string::npos && again) {
+        pos = hay.find(g_be.lastFind, 0); // wrap
+    }
+    if (pos == std::string::npos) return false;
+    g_be.lastFindPos = pos;
+    // Highlight in open doc window if present
+    if (g_hClient) {
+        HWND active = (HWND)SendMessageA(g_hClient, WM_MDIGETACTIVE, 0, 0);
+        HWND edit = active ? GetDlgItem(active, 9001) : nullptr;
+        if (edit) {
+            SendMessageA(edit, EM_SETSEL, (WPARAM)pos, (LPARAM)(pos + g_be.lastFind.size()));
+            SendMessageA(edit, EM_SCROLLCARET, 0, 0);
+            SetFocus(edit);
+        }
+    }
+    return true;
+}
+
+int ShowFindDialog(HWND parent) {
+    HWND hDlg = BeginModalDialog(parent, "Find", 360, 130);
+    CreateWindowA("STATIC", "Find what:", WS_CHILD | WS_VISIBLE,
+        16, 20, 70, 16, hDlg, nullptr, g_hInst, nullptr);
+    CreateWindowA("EDIT", g_be.lastFind.c_str(),
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
+        90, 18, 240, 22, hDlg, (HMENU)(intptr_t)9300, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "&Find Next",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        150, 60, 90, 28, hDlg, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Cancel",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        250, 60, 80, 28, hDlg, (HMENU)IDCANCEL, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hDlg);
+    // Custom loop to read edit before destroy
+    EnableWindow(parent, FALSE);
+    ShowWindow(hDlg, SW_SHOW);
+    MSG msg;
+    int code = IDCANCEL;
+    char buf[256] = {};
+    while (IsWindow(hDlg) && GetMessageA(&msg, nullptr, 0, 0)) {
+        if (msg.message == WM_COMMAND && LOWORD(msg.wParam) == IDOK) {
+            GetDlgItemTextA(hDlg, 9300, buf, sizeof(buf));
+            code = IDOK;
+            DestroyWindow(hDlg);
+            break;
+        }
+        if (msg.message == WM_COMMAND && LOWORD(msg.wParam) == IDCANCEL) {
+            code = IDCANCEL;
+            DestroyWindow(hDlg);
+            break;
+        }
+        if (!IsDialogMessageA(hDlg, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+    }
+    EnableWindow(parent, TRUE);
+    SetActiveWindow(parent);
+    if (code == IDOK && buf[0]) {
+        g_be.lastFind = buf;
+        g_be.lastFindPos = 0;
+        if (!FindInActiveDoc(false))
+            ClassicMessage(parent, "Find", "Text not found.");
+    }
+    return code;
 }
 
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1394,6 +1531,25 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 250:
             CreateFormWindow("Document Browser", 9);
             break;
+        case 251: {
+            g_be.seed();
+            int idNew = g_be.createDoc("Untitled Document");
+            StubDoc* d = g_be.get(idNew);
+            CreateFormWindow(d->title.c_str(), 8);
+            RefreshStatus();
+            break;
+        }
+        case 252:
+            CreateFormWindow("Link Browser", 10);
+            break;
+        case 253:
+            ClassicMessage(hwnd, "About winfe resurrection",
+                "Udanax Gold Windows frontend — visual resurrection\n"
+                "Original: 1993 Xanadu / Udanax Gold winfe + pcaide\n"
+                "Forms from fe.rc and pcaide/*.pvt\n\n"
+                "In-memory stub mid-end only.\n"
+                "Historical effort — not a live FeBe client.");
+            break;
         case CM_INITIALIZE:
             g_be = Backend();
             g_be.connected = true;
@@ -1407,7 +1563,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             ShowDocInfoDialog(hwnd);
             break;
         case CM_LINKS:
-            ShowLinkInfoDialog(hwnd);
+            CreateFormWindow("Link Browser", 10);
             break;
         case CM_STARTLINK: {
             g_be.seed();
@@ -1520,8 +1676,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case CM_INSERTFILE: case CM_COPYTOFILE:
             ClassicMessage(hwnd, "Edit", "File insert/export not implemented in stub.");
             break;
-        case CM_EDITFIND: case CM_EDITREPLACE: case CM_EDITFINDNEXT:
-            ClassicMessage(hwnd, "Edit", "Find/Replace: not implemented in stub.");
+        case CM_EDITFIND:
+            ShowFindDialog(hwnd);
+            break;
+        case CM_EDITFINDNEXT:
+            if (g_be.lastFind.empty())
+                ShowFindDialog(hwnd);
+            else if (!FindInActiveDoc(true))
+                ClassicMessage(hwnd, "Find", "Text not found.");
+            break;
+        case CM_EDITREPLACE:
+            ClassicMessage(hwnd, "Replace", "Replace not implemented in stub.\nUse Find + manual edit.");
             break;
         case CM_CASCADECHILDREN:
             CascadeChildren();
