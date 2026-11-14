@@ -450,10 +450,11 @@ HWND CreateFormWindow(const char* title, int type) {
     RegisterClassA(&wc);
 
     int w = 380, h = 300;
-    if (type == 0) { w = 340; h = 120; }      // Desktop
-    if (type == 1) { w = 400; h = 340; }      // Memo
-    if (type == 2) { w = 400; h = 320; }      // Rate
-    if (type == 3) { w = 620; h = 580; }      // Akord (full historical form)
+    if (type == 0) { w = 420; h = 160; }      // Desktop
+    if (type == 1) { w = 560; h = 520; }      // Memo (Memorandum)
+    if (type == 2) { w = 600; h = 560; }      // Rate (Rating Instructions)
+    if (type == 3) { w = 620; h = 580; }      // Akord
+    if (type == 4) { w = 520; h = 560; }      // Underwriters Manual
 
     HWND hwnd = CreateWindowExA(
         WS_EX_CLIENTEDGE,
@@ -466,77 +467,196 @@ HWND CreateFormWindow(const char* title, int type) {
     return hwnd;
 }
 
+// Extra form IDs for Desktop launch buttons
+enum {
+    FI_HOME_UM = 104
+};
+
 void BuildHomeForm(HWND hwnd) {
-    // FDLG_HOME: three buttons
+    // Expanded desktop launcher (original had Akord / Rate / Memo)
     CreateWindowA("BUTTON", "Akord form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        20, 30, 90, 30, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
+        16, 20, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_AKORD, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Rate form",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        125, 30, 90, 30, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
+        130, 20, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_RATE, g_hInst, nullptr);
     CreateWindowA("BUTTON", "Memo 1",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        230, 30, 90, 30, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
+        244, 20, 100, 28, hwnd, (HMENU)(intptr_t)FI_HOME_MEMO1, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Underwriters Manual",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        16, 60, 160, 28, hwnd, (HMENU)(intptr_t)FI_HOME_UM, g_hInst, nullptr);
     ApplyClassicFontToChildren(hwnd);
 }
 
 void BuildMemoForm(HWND hwnd) {
-    // FDLG_MEMO layout
-    auto lab = [&](const char* t, int y) {
-        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_RIGHT,
-            12, y, 70, 16, hwnd, nullptr, g_hInst, nullptr);
+    // Historical "Memorandum" from pcaide/memo.pvt
+    auto lab = [&](const char* t, int x, int y, int w = 70) {
+        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_LEFT,
+            x, y, w, 14, hwnd, nullptr, g_hInst, nullptr);
     };
-    auto ed = [&](int id, int y, int h = 22, bool multi = false) {
-        DWORD st = WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP | ES_LEFT;
-        if (multi) st |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
-        CreateWindowA("EDIT", "", st, 90, y, 270, h, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+    auto ed = [&](int id, int x, int y, int w, int h, const char* text = "") {
+        DWORD st = WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | WS_TABSTOP | ES_AUTOHSCROLL;
+        if (h > 24) st |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
+        CreateWindowA("EDIT", text, st, x, y, w, h,
+            hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
     };
 
-    lab("To:", 18);      ed(FI_MEMO_TO, 16);
-    lab("From:", 50);    ed(FI_MEMO_FROM, 48);
-    lab("Re:", 82);      ed(FI_MEMO_RE, 80);
-    lab("Message:", 120); ed(FI_MEMO_MESSAGE, 118, 100, true);
+    lab("ACME", 10, 8, 50);
+    lab("CASUALTY INSURANCE", 70, 8, 160);
+    lab("MEMORANDUM", 10, 28, 120);
+    lab("DATE", 400, 8, 40);
+    ed(1, 440, 6, 90, 20, "3/15/93");
 
-    CreateWindowA("BUTTON", "Reference",
+    lab("FROM", 10, 50, 50);
+    ed(FI_MEMO_FROM, 60, 48, 220, 40, "Ravi Pandya");
+    lab("FILE", 300, 50, 40);
+    ed(2, 340, 48, 180, 40, "CGL-92-014");
+
+    lab("TO", 10, 100, 40);
+    ed(FI_MEMO_TO, 60, 98, 220, 50, "Ted Nelson\r\nMark Miller");
+
+    CreateWindowA("BUTTON", "References...",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-        150, 235, 100, 28, hwnd, (HMENU)(intptr_t)FI_MEMO_REFERENCE, g_hInst, nullptr);
+        400, 110, 110, 26, hwnd, (HMENU)(intptr_t)FI_MEMO_REFERENCE, g_hInst, nullptr);
 
-    SetDlgItemTextA(hwnd, FI_MEMO_TO, "Ted Nelson");
-    SetDlgItemTextA(hwnd, FI_MEMO_FROM, "Ravi Pandya");
-    SetDlgItemTextA(hwnd, FI_MEMO_RE, "Enfilade progress");
-    SetDlgItemTextA(hwnd, FI_MEMO_MESSAGE,
+    lab("MEMORANDUM", 10, 160, 100);
+    ed(FI_MEMO_MESSAGE, 10, 178, 520, 240,
         "The coordinate space work is looking solid.\r\n"
-        "Transclusion tests pass on the current Ent.\r\n"
-        "— 1993");
+        "Transclusion tests pass on the current Ent.\r\n\r\n"
+        "Please review the attached rate worksheet before\r\n"
+        "the Thursday underwriting meeting.\r\n\r\n"
+        "— Ravi, 1993");
+
+    CreateWindowA("BUTTON", "Set Aside",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        340, 440, 90, 28, hwnd, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Done",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        440, 440, 90, 28, hwnd, (HMENU)IDCANCEL, g_hInst, nullptr);
 
     ApplyClassicFontToChildren(hwnd);
 }
 
 void BuildRateForm(HWND hwnd) {
-    // FDLG_RATE / "ACME Rate Request"
-    auto lab = [&](const char* t, int y) {
-        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_RIGHT,
-            12, y, 100, 16, hwnd, nullptr, g_hInst, nullptr);
+    // Historical "Rating Instructions" from pcaide/rate.pvt
+    auto lab = [&](const char* t, int x, int y, int w = 80) {
+        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_LEFT,
+            x, y, w, 14, hwnd, nullptr, g_hInst, nullptr);
     };
-    auto ed = [&](int id, int y, int h = 22) {
-        CreateWindowA("EDIT", "",
-            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
-            120, y, 240, h, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+    auto ed = [&](int id, int x, int y, int w, int h, const char* text = "") {
+        DWORD st = WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | WS_TABSTOP | ES_AUTOHSCROLL;
+        if (h > 22) st |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
+        CreateWindowA("EDIT", text, st, x, y, w, h,
+            hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+    };
+    auto chk = [&](int id, const char* t, int x, int y, int w) {
+        CreateWindowA("BUTTON", t,
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
+            x, y, w, 16, hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
     };
 
-    lab("Name:", 18);         ed(FI_RATE_NAME, 16);
-    lab("Underwriter:", 50);  ed(FI_RATE_UNDERWRITER, 48);
-    lab("Instructions:", 82); ed(FI_RATE_INSTRUCTIONS, 80, 90);
+    lab("DATE", 480, 10, 40);
+    ed(1, 520, 8, 60, 20, "2/1/93");
 
-    CreateWindowA("BUTTON", "Sample Checkbox",
-        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
-        120, 190, 180, 22, hwnd, (HMENU)(intptr_t)FI_RATE_SAMPLECHECKBOX, g_hInst, nullptr);
+    lab("PRODUCER", 10, 36, 70);
+    ed(3, 10, 52, 150, 70, "Willy Loman");
+    lab("APPLICANT", 180, 36, 70);
+    ed(2, 180, 52, 280, 50, "Unlucky Markets");
 
-    SetDlgItemTextA(hwnd, FI_RATE_NAME, "Standard CGL");
-    SetDlgItemTextA(hwnd, FI_RATE_UNDERWRITER, "Udanax Underwriting");
-    SetDlgItemTextA(hwnd, FI_RATE_INSTRUCTIONS,
-        "Rate according to 1992 schedule.\r\n"
-        "Apply club discounts where applicable.");
+    lab("PROP EFF", 180, 115, 60);
+    ed(4, 245, 113, 70, 20, "4/1/93");
+    lab("PROP EXP", 330, 115, 60);
+    ed(5, 395, 113, 70, 20, "4/1/94");
+    chk(6, "AGENCY", 480, 110, 80);
+    chk(7, "DIRECT", 480, 128, 80);
+    lab("PAYMENT", 10, 115, 60);
+    ed(8, 70, 113, 50, 20, "TBD");
+    lab("AUDIT", 10, 140, 50);
+    ed(9, 70, 138, 30, 20, "Y");
+
+    // Rate grid header
+    lab("RATE", 10, 175, 40);
+    lab("BASE", 80, 175, 50);
+    lab("REFERENCE", 200, 175, 80);
+    lab("COMMENTS", 380, 175, 80);
+
+    // A few rate rows (original had many empty edit cells)
+    for (int row = 0; row < 8; ++row) {
+        int y = 195 + row * 24;
+        ed(16 + row * 4,     10,  y, 60, 20);
+        ed(16 + row * 4 + 1, 80,  y, 110, 20);
+        ed(16 + row * 4 + 2, 200, y, 160, 20);
+        ed(16 + row * 4 + 3, 380, y, 180, 20);
+    }
+
+    // Sample first row
+    SetDlgItemTextA(hwnd, 16, "1.25");
+    SetDlgItemTextA(hwnd, 17, "CGL Basic");
+    SetDlgItemTextA(hwnd, 18, "ISO CG 00 01");
+    SetDlgItemTextA(hwnd, 19, "Standard premises");
+
+    CreateWindowA("BUTTON", "Set Aside",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        380, 480, 90, 28, hwnd, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Done",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        480, 480, 90, 28, hwnd, (HMENU)IDCANCEL, g_hInst, nullptr);
+
+    ApplyClassicFontToChildren(hwnd);
+}
+
+void BuildUmForm(HWND hwnd) {
+    // Historical "Underwriters Manual" from pcaide/um.pvt
+    auto lab = [&](const char* t, int x, int y, int w = 80) {
+        CreateWindowA("STATIC", t, WS_CHILD | WS_VISIBLE | SS_LEFT,
+            x, y, w, 16, hwnd, nullptr, g_hInst, nullptr);
+    };
+    auto ed = [&](int id, int x, int y, int w, int h, const char* text = "") {
+        DWORD st = WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | WS_TABSTOP | ES_AUTOHSCROLL;
+        if (h > 24) st |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
+        CreateWindowA("EDIT", text, st, x, y, w, h,
+            hwnd, (HMENU)(intptr_t)id, g_hInst, nullptr);
+    };
+
+    lab("ACME", 12, 10, 60);
+    lab("Commercial Casualty", 80, 10, 140);
+    lab("Volume I", 360, 8, 60);
+    lab("MANUAL", 300, 30, 50);
+    lab("PROCEDURE", 360, 30, 70);
+    lab("PAGE", 450, 30, 40);
+    ed(12, 300, 48, 40, 20, "12");
+    ed(13, 360, 48, 60, 20, "4.2");
+    ed(14, 450, 48, 40, 20, "18");
+
+    lab("TITLE", 12, 80, 40);
+    ed(17, 12, 98, 300, 50, "General Liability — Premises and Operations");
+    lab("DATE", 330, 80, 40);
+    ed(15, 370, 98, 70, 20, "1/15/93");
+    lab("REV", 450, 80, 30);
+    ed(16, 480, 98, 30, 20, "B");
+
+    CreateWindowA("BUTTON", "Exhibit 1",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        360, 130, 100, 24, hwnd, (HMENU)(intptr_t)11, g_hInst, nullptr);
+
+    ed(10, 12, 165, 480, 280,
+        "UNDERWRITING GUIDELINES\r\n"
+        "======================\r\n\r\n"
+        "1. Premises liability is rated on area and occupancy class.\r\n"
+        "2. Products/Completed Operations requires separate submission\r\n"
+        "   when receipts exceed $500,000.\r\n"
+        "3. Contractual liability — blanket coverage preferred;\r\n"
+        "   designated contracts must be scheduled.\r\n\r\n"
+        "Refer to ISO circular GL-92-3 for updated loss costs.\r\n\r\n"
+        "(Sample text for historical UI resurrection — 1993)");
+
+    CreateWindowA("BUTTON", "Set Aside",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        300, 470, 90, 28, hwnd, (HMENU)IDOK, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "Done",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        400, 470, 90, 28, hwnd, (HMENU)IDCANCEL, g_hInst, nullptr);
 
     ApplyClassicFontToChildren(hwnd);
 }
@@ -667,6 +787,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 1: BuildMemoForm(hwnd); break;
         case 2: BuildRateForm(hwnd); break;
         case 3: BuildAkordForm(hwnd); break;
+        case 4: BuildUmForm(hwnd); break;
         }
         return 0;
     }
@@ -674,8 +795,9 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         int id = LOWORD(wParam);
         if (type == 0) {
             if (id == FI_HOME_AKORD) CreateFormWindow("AKORD General Liability Section", 3);
-            if (id == FI_HOME_RATE)  CreateFormWindow("ACME Rate Request", 2);
-            if (id == FI_HOME_MEMO1) CreateFormWindow("Memo", 1);
+            if (id == FI_HOME_RATE)  CreateFormWindow("Rating Instructions", 2);
+            if (id == FI_HOME_MEMO1) CreateFormWindow("Memorandum", 1);
+            if (id == FI_HOME_UM)    CreateFormWindow("Underwriters Manual", 4);
         }
         if (id == FI_MEMO_REFERENCE) {
             ShowLinkInfoDialog(hwnd);
@@ -751,7 +873,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CREATE: {
         g_hFont = CreateClassicFont(-12, false);
         g_hStatus = CreateWindowA("STATIC",
-            " Udanax Gold Frontend  —  1993 visual resurrection (step 5)  |  Cascade / Tile / Close All work",
+            " Udanax Gold Frontend  —  1993 visual resurrection (step 6)  |  Memo / Rate / UM from original .pvt",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)ID_MAIN_STATUS, g_hInst, nullptr);
         SetClassicFont(g_hStatus);
