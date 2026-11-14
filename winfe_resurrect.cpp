@@ -111,6 +111,7 @@ HWND      g_hClient = nullptr;   // MDICLIENT
 HWND      g_hStatus = nullptr;
 HFONT     g_hFont   = nullptr;
 int       g_childCount = 0;
+int       g_pendingFormType = 0; // reliable type for next MDI child WM_CREATE
 
 void CascadeChildren() {
     if (g_hClient)
@@ -775,6 +776,7 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 HWND CreateFormWindow(const char* title, int type) {
     g_childCount++;
+    g_pendingFormType = type;
     // Single MDI child class for all form types
     static bool registered = false;
     if (!registered) {
@@ -1366,10 +1368,25 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
     switch (msg) {
     case WM_CREATE: {
+        // Prefer g_pendingFormType — CreateMDIWindow/Wine may not pass lParam
+        // the same way on all hosts. Also try MDICREATESTRUCT.lParam.
+        type = g_pendingFormType;
         CREATESTRUCTA* cs = (CREATESTRUCTA*)lParam;
-        // type was encoded as type+1 so Desktop (0) is not a NULL lpCreateParams
-        int encoded = (int)(intptr_t)cs->lpCreateParams;
-        type = encoded > 0 ? encoded - 1 : 0;
+        if (cs && cs->lpCreateParams) {
+            // Standard Win32: lpCreateParams -> MDICREATESTRUCT, user data in .lParam
+            MDICREATESTRUCTA* mcs = (MDICREATESTRUCTA*)cs->lpCreateParams;
+            if (mcs && mcs->lParam != 0) {
+                int encoded = (int)mcs->lParam;
+                // We pass type+1 so 0 remains representable
+                if (encoded >= 1 && encoded <= 32)
+                    type = encoded - 1;
+            } else {
+                // Some hosts pass the raw value as lpCreateParams
+                int encoded = (int)(intptr_t)cs->lpCreateParams;
+                if (encoded >= 1 && encoded <= 32)
+                    type = encoded - 1;
+            }
+        }
         SetWindowLongPtrA(hwnd, GWLP_USERDATA, (LONG_PTR)type);
         switch (type) {
         case 0: BuildHomeForm(hwnd); break;
@@ -1383,8 +1400,8 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         case 8: BuildDocForm(hwnd); break;
         case 9: BuildDocBrowser(hwnd); break;
         case 10: BuildLinkBrowser(hwnd); break;
+        default: break;
         }
-        // Let DefMDIChildProc finish MDI child creation
         break;
     }
     case WM_COMMAND: {
