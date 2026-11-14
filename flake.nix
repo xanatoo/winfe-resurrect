@@ -15,20 +15,14 @@
         in rec {
           winfe-resurrect = pkgsWin.stdenv.mkDerivation {
             pname = "winfe-resurrect";
-            version = "0.7.0";
-
-            # Flake source; do NOT set sourceRoot = "." — that points at
-            # $NIX_BUILD_TOP instead of the unpacked source directory.
-            src = ./.;
+            version = "0.7.1";
+            src = self;
 
             nativeBuildInputs = [ pkgsWin.stdenv.cc ];
-
             dontConfigure = true;
 
             buildPhase = ''
               runHook preBuild
-              echo "Source tree:"
-              ls -la
               $CXX -std=c++17 -O2 -Wall -mwindows \
                 winfe_resurrect.cpp \
                 -o winfe_resurrect.exe \
@@ -38,9 +32,8 @@
 
             installPhase = ''
               runHook preInstall
-              mkdir -p $out/bin
+              mkdir -p $out/bin $out/share/winfe-resurrect
               install -Dm755 winfe_resurrect.exe $out/bin/winfe_resurrect.exe
-              mkdir -p $out/share/winfe-resurrect
               cp -f README.md fe.rc fe.h $out/share/winfe-resurrect/ 2>/dev/null || true
               runHook postInstall
             '';
@@ -84,12 +77,6 @@
               wineWowPackages.stable
               gnumake
             ];
-            shellHook = ''
-              echo "winfe-resurrect dev shell"
-              echo "  make          # cross-compile with MinGW"
-              echo "  nix build     # produce the .exe"
-              echo "  nix run       # build + run under Wine"
-            '';
           };
         });
     };
