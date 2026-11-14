@@ -101,55 +101,28 @@ enum {
 // ---------------------------------------------------------------------------
 HINSTANCE g_hInst   = nullptr;
 HWND      g_hMain   = nullptr;
+HWND      g_hClient = nullptr;   // MDICLIENT
 HWND      g_hStatus = nullptr;
 HFONT     g_hFont   = nullptr;
 int       g_childCount = 0;
-std::vector<HWND> g_children;
 
-void TrackChild(HWND hwnd) {
-    g_children.push_back(hwnd);
-}
-void UntrackChild(HWND hwnd) {
-    auto it = std::remove(g_children.begin(), g_children.end(), hwnd);
-    g_children.erase(it, g_children.end());
-}
-void CloseAllChildren() {
-    auto copy = g_children;
-    for (HWND h : copy) {
-        if (IsWindow(h)) DestroyWindow(h);
-    }
-    g_children.clear();
-}
 void CascadeChildren() {
-    int x = 10, y = 10;
-    for (HWND h : g_children) {
-        if (!IsWindow(h)) continue;
-        ShowWindow(h, SW_RESTORE);
-        SetWindowPos(h, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
-        x += 28; y += 28;
-    }
+    if (g_hClient)
+        SendMessageA(g_hClient, WM_MDICASCADE, MDITILE_SKIPDISABLED, 0);
 }
 void TileChildren() {
-    if (g_children.empty()) return;
-    RECT rc;
-    GetClientRect(g_hMain, &rc);
-    rc.bottom -= 24; // leave room for status bar
-    int n = (int)g_children.size();
-    int cols = (int)std::ceil(std::sqrt((double)n));
-    if (cols < 1) cols = 1;
-    int rows = (n + cols - 1) / cols;
-    int w = (rc.right - rc.left) / cols;
-    int h = (rc.bottom - rc.top) / rows;
-    int i = 0;
-    for (HWND hwnd : g_children) {
-        if (!IsWindow(hwnd)) continue;
-        int col = i % cols;
-        int row = i / cols;
-        ShowWindow(hwnd, SW_RESTORE);
-        SetWindowPos(hwnd, nullptr,
-            rc.left + col * w, rc.top + row * h,
-            w, h, SWP_NOZORDER);
-        ++i;
+    if (g_hClient)
+        SendMessageA(g_hClient, WM_MDITILE, MDITILE_HORIZONTAL, 0);
+}
+void ArrangeIcons() {
+    if (g_hClient)
+        SendMessageA(g_hClient, WM_MDIICONARRANGE, 0, 0);
+}
+void CloseAllChildren() {
+    if (!g_hClient) return;
+    HWND child;
+    while ((child = (HWND)SendMessageA(g_hClient, WM_MDIGETACTIVE, 0, 0)) != nullptr) {
+        SendMessageA(g_hClient, WM_MDIDESTROY, (WPARAM)child, 0);
     }
 }
 
@@ -438,16 +411,21 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 HWND CreateFormWindow(const char* title, int type) {
     g_childCount++;
-    char className[64];
-    sprintf(className, "WinFEForm%d", type);
-
-    WNDCLASSA wc = {};
-    wc.lpfnWndProc   = FormWndProc;
-    wc.hInstance     = g_hInst;
-    wc.lpszClassName = className;
-    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-    wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-    RegisterClassA(&wc);
+    // Single MDI child class for all form types
+    static bool registered = false;
+    if (!registered) {
+        WNDCLASSA wc = {};
+        wc.style         = CS_HREDRAW | CS_VREDRAW;
+        wc.lpfnWndProc   = FormWndProc;
+        wc.cbWndExtra    = sizeof(void*);
+        wc.hInstance     = g_hInst;
+        wc.hIcon         = LoadIcon(nullptr, IDI_APPLICATION);
+        wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+        wc.lpszClassName = "WinFEMdiChild";
+        RegisterClassA(&wc);
+        registered = true;
+    }
 
     int w = 380, h = 300;
     if (type == 0) { w = 480; h = 200; }      // Desktop
@@ -459,14 +437,15 @@ HWND CreateFormWindow(const char* title, int type) {
     if (type == 6) { w = 400; h = 140; }      // Reference Area (Tabs)
     if (type == 7) { w = 560; h = 580; }      // Contractual Profile
 
-    HWND hwnd = CreateWindowExA(
-        WS_EX_CLIENTEDGE,
-        className, title,
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
-        30 + g_childCount * 28, 40 + g_childCount * 28,
-        w, h,
-        g_hMain, nullptr, g_hInst, (LPVOID)(intptr_t)type);
-    if (hwnd) TrackChild(hwnd);
+    HWND hwnd = CreateMDIWindowA(
+        "WinFEMdiChild",
+        title,
+        WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS |
+            WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, w, h,
+        g_hClient,
+        g_hInst,
+        (LPARAM)(intptr_t)type);
     return hwnd;
 }
 
@@ -934,13 +913,14 @@ LRESULT CALLBACK FormWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         return 0;
     }
     case WM_CLOSE:
-        DestroyWindow(hwnd);
-        return 0;
-    case WM_DESTROY:
-        UntrackChild(hwnd);
+        // Ask MDI client to destroy us
+        if (g_hClient)
+            SendMessageA(g_hClient, WM_MDIDESTROY, (WPARAM)hwnd, 0);
+        else
+            DestroyWindow(hwnd);
         return 0;
     }
-    return DefWindowProcA(hwnd, msg, wParam, lParam);
+    return DefMDIChildProcA(hwnd, msg, wParam, lParam);
 }
 
 // ---------------------------------------------------------------------------
@@ -1001,8 +981,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     switch (msg) {
     case WM_CREATE: {
         g_hFont = CreateClassicFont(-12, false);
+
+        // MDI client fills the frame (above status bar)
+        CLIENTCREATESTRUCT ccs = {};
+        ccs.hWindowMenu  = nullptr; // Window menu not owner-drawn; optional
+        ccs.idFirstChild = 5000;
+        g_hClient = CreateWindowExA(WS_EX_CLIENTEDGE, "MDICLIENT", nullptr,
+            WS_CHILD | WS_CLIPCHILDREN | WS_VSCROLL | WS_HSCROLL | WS_VISIBLE,
+            0, 0, 0, 0, hwnd, (HMENU)(intptr_t)1, g_hInst, &ccs);
+
         g_hStatus = CreateWindowA("STATIC",
-            " Udanax Gold Frontend  —  1993 visual resurrection (step 7)  |  Attn / Tabs / CProf + accelerators",
+            " Udanax Gold Frontend  —  1993 visual resurrection (step 8)  |  true MDI children",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             0, 0, 0, 0, hwnd, (HMENU)(intptr_t)ID_MAIN_STATUS, g_hInst, nullptr);
         SetClassicFont(g_hStatus);
@@ -1017,7 +1006,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_SIZE: {
         RECT rc;
         GetClientRect(hwnd, &rc);
-        if (g_hStatus) MoveWindow(g_hStatus, 0, rc.bottom - 22, rc.right, 22, TRUE);
+        const int statusH = 22;
+        if (g_hClient)
+            MoveWindow(g_hClient, 0, 0, rc.right, rc.bottom - statusH, TRUE);
+        if (g_hStatus)
+            MoveWindow(g_hStatus, 0, rc.bottom - statusH, rc.right, statusH, TRUE);
         return 0;
     }
     case WM_COMMAND: {
@@ -1057,10 +1050,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             TileChildren();
             break;
         case CM_ARRANGEICONS:
-            CascadeChildren(); // close enough for this resurrection
+            ArrangeIcons();
             break;
         case CM_CLOSECHILDREN:
             CloseAllChildren();
+            break;
+        default:
+            // Forward unhandled commands to the active MDI child
+            if (g_hClient) {
+                HWND active = (HWND)SendMessageA(g_hClient, WM_MDIGETACTIVE, 0, 0);
+                if (active) SendMessageA(active, WM_COMMAND, wParam, lParam);
+            }
             break;
         }
         return 0;
@@ -1073,7 +1073,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         PostQuitMessage(0);
         return 0;
     }
-    return DefWindowProcA(hwnd, msg, wParam, lParam);
+    return DefFrameProcA(hwnd, g_hClient, msg, wParam, lParam);
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,7 +1118,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
     MSG msg;
     while (GetMessageA(&msg, nullptr, 0, 0)) {
-        if (!TranslateAcceleratorA(g_hMain, hAccel, &msg)) {
+        if (!TranslateMDISysAccel(g_hClient, &msg) &&
+            !TranslateAcceleratorA(g_hMain, hAccel, &msg)) {
             TranslateMessage(&msg);
             DispatchMessageA(&msg);
         }
