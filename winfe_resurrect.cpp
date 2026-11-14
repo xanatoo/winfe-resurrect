@@ -28,9 +28,11 @@
 #include <map>
 #include <sstream>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#endif
 
 // ---------------------------------------------------------------------------
 // IDs matching original fe.h / fe.rc
@@ -1490,6 +1492,33 @@ int ShowFindDialog(HWND parent) {
     return code;
 }
 
+
+int ShowClubsDialog(HWND parent) {
+    HWND hDlg = BeginModalDialog(parent, "Test Clubs", 360, 240);
+    CreateWindowA("STATIC", "Permission clubs (stub mid-end)",
+        WS_CHILD | WS_VISIBLE, 16, 12, 300, 16, hDlg, nullptr, g_hInst, nullptr);
+    HWND hList = CreateWindowA("LISTBOX", "",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_TABSTOP,
+        16, 36, 320, 120, hDlg, (HMENU)(intptr_t)9400, g_hInst, nullptr);
+    const char* clubs[] = {
+        "Public",
+        "System Admin",
+        "Underwriting",
+        "Xanadu Engineering",
+        "Unlucky Markets (applicant)"
+    };
+    for (auto c : clubs)
+        SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)c);
+    CreateWindowA("STATIC", "Document Info uses Private / Club / Public levels.",
+        WS_CHILD | WS_VISIBLE, 16, 165, 320, 16, hDlg, nullptr, g_hInst, nullptr);
+    CreateWindowA("BUTTON", "OK",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP,
+        250, 190, 80, 28, hDlg, (HMENU)IDOK, g_hInst, nullptr);
+    ApplyClassicFontToChildren(hDlg);
+    ModalResult res;
+    return RunModalLoop(hDlg, &res);
+}
+
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
@@ -1675,9 +1704,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             break;
         }
         case CM_TESTCLUBS:
-            ClassicMessage(hwnd, "Test Clubs",
-                "Club permissions stub.\n"
-                "Private / Club / Public levels are stored on each document.");
+            ShowClubsDialog(hwnd);
             break;
         case CM_EDITUNDO: case CM_EDITCUT: case CM_EDITCOPY:
         case CM_EDITPASTE: case CM_EDITDELETE:
